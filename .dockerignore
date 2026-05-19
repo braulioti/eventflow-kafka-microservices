@@ -1,0 +1,15 @@
+node_modules
+**/node_modules
+dist
+**/dist
+coverage
+**/*.spec.ts
+**/*.e2e-spec.ts
+test
+.git
+.gitignore
+.idea
+.vscode
+*.md
+.env.local
+.env.*.local

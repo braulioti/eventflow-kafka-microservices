@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  order-service:
+    build:
+      context: ../..
+      dockerfile: docker/services/order-service/Dockerfile
+    image: eventflow-order-service
+    container_name: eventflow-order-service
+    ports:
+      - "${ORDER_SERVICE_PORT:-3001}:3001"
+    environment:
+      PORT: 3001
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    networks:
+      - eventflow
+
+  payment-service:
+    build:
+      context: ../..
+      dockerfile: docker/services/payment-service/Dockerfile
+    image: eventflow-payment-service
+    container_name: eventflow-payment-service
+    ports:
+      - "${PAYMENT_SERVICE_PORT:-3002}:3002"
+    environment:
+      PORT: 3002
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    networks:
+      - eventflow
+
+  stock-service:
+    build:
+      context: ../..
+      dockerfile: docker/services/stock-service/Dockerfile
+    image: eventflow-stock-service
+    container_name: eventflow-stock-service
+    ports:
+      - "${STOCK_SERVICE_PORT:-3003}:3003"
+    environment:
+      PORT: 3003
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    networks:
+      - eventflow
+
+  notification-service:
+    build:
+      context: ../..
+      dockerfile: docker/services/notification-service/Dockerfile
+    image: eventflow-notification-service
+    container_name: eventflow-notification-service
+    ports:
+      - "${NOTIFICATION_SERVICE_PORT:-3004}:3004"
+    environment:
+      PORT: 3004
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    networks:
+      - eventflow
+
+  dlq-service:
+    build:
+      context: ../..
+      dockerfile: docker/services/dlq-service/Dockerfile
+    image: eventflow-dlq-service
+    container_name: eventflow-dlq-service
+    ports:
+      - "${DLQ_SERVICE_PORT:-3005}:3005"
+    environment:
+      PORT: 3005
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    networks:
+      - eventflow
+
+networks:
+  eventflow:
+    external: true
+    name: eventflow-network
