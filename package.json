@@ -4,8 +4,12 @@
   "private": true,
   "description": "Event-driven microservices with Apache Kafka",
   "workspaces": [
+    "shared",
     "services/*"
   ],
+  "dependencies": {
+    "@nestjs/platform-express": "^11.1.21"
+  },
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "start:order": "npm run start:dev -w order-service",

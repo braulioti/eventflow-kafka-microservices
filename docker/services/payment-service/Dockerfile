@@ -3,12 +3,15 @@ FROM docker.io/node:22-alpine AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json ./
+COPY shared/package.json ./shared/
 COPY services/payment-service/package.json ./services/payment-service/
 
 RUN npm ci --workspace=payment-service
 
+COPY shared ./shared
 COPY services/payment-service ./services/payment-service
 
+RUN npm run build -w @eventflow/shared
 RUN npm run build -w payment-service
 
 FROM docker.io/node:22-alpine AS production
@@ -19,10 +22,12 @@ ENV NODE_ENV=production
 ENV PORT=3002
 
 COPY package.json package-lock.json ./
+COPY shared/package.json ./shared/
 COPY services/payment-service/package.json ./services/payment-service/
 
 RUN npm ci --workspace=payment-service --omit=dev
 
+COPY --from=builder /app/shared/dist ./shared/dist
 COPY --from=builder /app/services/payment-service/dist ./services/payment-service/dist
 
 WORKDIR /app/services/payment-service

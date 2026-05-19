@@ -89,7 +89,8 @@ flowchart LR
 ```
 eventflow-kafka-microservices/
 ├── docker/
-│   ├── docker-compose.yml              # Kafka, Zookeeper, Kafka UI
+│   ├── docker-compose.yml              # Kafka, Zookeeper, Kafka UI, kafka-init
+│   ├── kafka-init/create-topics.sh       # Topic bootstrap (runs on compose up)
 │   └── services/
 │       ├── docker-compose.yml            # All NestJS microservices
 │       ├── order-service/Dockerfile
@@ -103,8 +104,10 @@ eventflow-kafka-microservices/
 │   ├── stock-service/
 │   ├── notification-service/
 │   └── dlq-service/
-├── shared/                             # Shared contracts and utilities (planned)
-├── docs/                               # Additional documentation (planned)
+├── shared/                             # @eventflow/shared — events, topics, envelopes
+├── docs/
+│   ├── EVENT_MODELING.md               # Core events, topics, envelope rules
+│   └── EVENT_CATALOG.md                # Full event catalog reference
 ├── scripts/                            # Automation scripts (planned)
 ├── .env                                # Local environment variables
 ├── .dockerignore
@@ -129,12 +132,12 @@ eventflow-kafka-microservices/
 ```bash
 git clone <repository-url>
 cd eventflow-kafka-microservices
-cp .env .env.local   # optional — adjust variables if needed
+cp .env.example .env.example.local   # optional — adjust variables if needed
 ```
 
 ### 2. Start infrastructure (Kafka)
 
-Creates the shared Docker network `eventflow-network`.
+Creates the shared Docker network `eventflow-network` and **all Kafka topics** (including DLQ) via the `kafka-init` service.
 
 **Docker:**
 
@@ -156,6 +159,8 @@ podman-compose -f docker/docker-compose.yml up -d
 | Zookeeper | `localhost:2181` |
 
 > Images use the `docker.io/` prefix so Podman can pull them without interactive short-name prompts.
+>
+> `kafka-init` runs once after Kafka is ready. `kafka-ui` starts only after topics are created.
 
 ### 3. Start all microservices (Docker)
 
@@ -202,6 +207,54 @@ Each service exposes:
 
 - `GET /` — service info
 - `GET /health` — health check
+- `GET /events/catalog` — events produced/consumed by this service
+
+### Event catalog & Kafka
+
+Domain events, Kafka topics, payloads, and envelopes are defined in `@eventflow/shared`.
+
+Each service runs as a **hybrid app** (HTTP + Kafka consumer) via `@nestjs/microservices`.
+
+- [docs/PROJECT_DETAILS.md](docs/PROJECT_DETAILS.md) — step-by-step project guide (architecture, runbook, happy path)
+- [docs/PROJECT_DETAILS.md](docs/PROJECT_DETAILS.md) — end-to-end guide (business + technical)
+- [docs/EVENT_MODELING.md](docs/EVENT_MODELING.md) — core events, partitions, retention, envelope
+- [docs/EVENT_CATALOG.md](docs/EVENT_CATALOG.md) — full event list and ownership
+- [docs/RETRY_DLQ.md](docs/RETRY_DLQ.md) — retry and DLQ handling
+
+Core flow: `order.created → payment.processed → stock.reserved → notification.sent`
+
+```bash
+curl http://localhost:3001/events/catalog   # order-service
+curl http://localhost:3005/events/catalog   # dlq-service (full system catalog)
+```
+
+#### End-to-end flow (Kafka)
+
+1. Start infrastructure and microservices (see [Running the environment](#running-the-environment)).
+2. Trigger the happy path:
+
+```bash
+curl -X POST http://localhost:3001/orders \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "customerId": "customer-1",
+    "items": [{ "productId": "sku-1", "quantity": 2, "unitPrice": 49.9 }]
+  }'
+```
+
+Event chain:
+
+```
+order.created → payment.processed → stock.reserved → notification.sent
+```
+
+3. Inspect messages in Kafka UI: http://localhost:8080
+
+Re-run topic creation only (if needed):
+
+```bash
+./scripts/create-kafka-topics.sh
+```
 
 Example:
 

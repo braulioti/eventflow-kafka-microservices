@@ -1,4 +1,5 @@
 # Environment
+.env.example
 .env.local
 .env.*.local
 

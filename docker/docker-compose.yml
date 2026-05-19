@@ -29,11 +29,29 @@ services:
     networks:
       - eventflow
 
+  kafka-init:
+    image: docker.io/confluentinc/cp-kafka:7.5.0
+    container_name: eventflow-kafka-init
+    depends_on:
+      - kafka
+    volumes:
+      - ./kafka-init/create-topics.sh:/create-topics.sh:ro,z
+    entrypoint: ["/bin/bash"]
+    command: ["/create-topics.sh"]
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    networks:
+      - eventflow
+    restart: "no"
+
   kafka-ui:
     image: docker.io/provectuslabs/kafka-ui:latest
     container_name: eventflow-kafka-ui
     depends_on:
-      - kafka
+      kafka:
+        condition: service_started
+      kafka-init:
+        condition: service_completed_successfully
     ports:
       - "8080:8080"
     environment:
