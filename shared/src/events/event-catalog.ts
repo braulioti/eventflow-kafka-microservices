@@ -1,3 +1,4 @@
+import { OrderKafkaTopic } from './domain-topics';
 import { EventType, type EventTypeValue } from './event-types';
 import { KafkaTopic, toDlqTopic } from './kafka-topics';
 
@@ -25,12 +26,13 @@ export interface EventCatalogEntry {
 export const EVENT_CATALOG: readonly EventCatalogEntry[] = [
   {
     eventType: EventType.ORDER_CREATED,
-    topic: KafkaTopic.ORDER_CREATED,
-    dlqTopic: toDlqTopic(KafkaTopic.ORDER_CREATED),
+    topic: OrderKafkaTopic.ORDER_EVENTS,
+    dlqTopic: toDlqTopic(OrderKafkaTopic.ORDER_EVENTS),
     producer: 'order-service',
     consumers: ['payment-service'],
     partitionKey: 'orderId',
-    description: 'A new order was placed and is ready for payment processing.',
+    description:
+      'A new order was placed and is ready for payment processing (published to order.events).',
   },
   {
     eventType: EventType.ORDER_CANCELLED,

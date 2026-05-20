@@ -31,7 +31,7 @@ export class StockEventsConsumer {
     const headers = parseKafkaHeaders(context.getMessage().headers);
 
     const outcome = await this.retryRunner.execute({
-      topic: EventType.PAYMENT_PROCESSED,
+      eventType: EventType.PAYMENT_PROCESSED,
       envelope,
       headers,
       handler: async () => {
@@ -54,7 +54,7 @@ export class StockEventsConsumer {
     const headers = parseKafkaHeaders(context.getMessage().headers);
 
     const outcome = await this.retryRunner.execute({
-      topic: EventType.ORDER_CANCELLED,
+      eventType: EventType.ORDER_CANCELLED,
       envelope,
       headers,
       handler: () => this.stockService.handleOrderCancelled(envelope),

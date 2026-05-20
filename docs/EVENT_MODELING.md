@@ -27,6 +27,80 @@ Additional events (`order.cancelled`, `payment.requested`, etc.) remain in the f
 
 ---
 
+## Order API (`POST /orders`)
+
+Implemented in **order-service** only.
+
+| Layer | Detail |
+|-------|--------|
+| Endpoint | `POST /orders` → HTTP **201** |
+| DTO | `CreateOrderDto`, nested `OrderItemDto` |
+| Validation | `class-validator` + global `ValidationPipe` (`whitelist`, `transform`) |
+| Database | SQLite via TypeORM — tables `orders`, `order_items` |
+| Env | `ORDER_DATABASE_PATH` (default `./services/order-service/data/orders.sqlite`) |
+
+**Request example:**
+
+```json
+{
+  "customerId": "customer-1",
+  "currency": "BRL",
+  "items": [{ "productId": "sku-1", "quantity": 2, "unitPrice": 49.9 }]
+}
+```
+
+**Flow:** validate → persist `pending` → build envelope → persist `eventId` → publish to **`order.events`** → return JSON.
+
+Code: `services/order-service/src/orders/`.
+
+### Checklist — `order.created`
+
+| Item | Implementation |
+|------|----------------|
+| Criar event envelope | `createEventEnvelope()` in `OrdersService.createOrder` |
+| Gerar `eventId` | UUID via `createEventEnvelope` (stored on `orders.event_id`) |
+| Gerar `correlationId` | `orderId` (same value for the whole saga) |
+| Adicionar `timestamp` | ISO-8601 UTC default in `createEventEnvelope` |
+| Publicar no tópico `order.events` | `resolveKafkaTopic(EventType.ORDER_CREATED)` → `order.events` |
+
+### Checklist — Retry (producer)
+
+| Item | Implementation |
+|------|----------------|
+| Configurar retry do producer | KafkaJS `producer.retry` in `getKafkaClientConfig()` |
+| Configurar retry backoff | `publishWithProducerRetry()` + `KAFKA_PRODUCER_RETRY_*` / `KAFKA_RETRY_*` |
+| Tratar falha de publicação | `OrdersService` marks order `failed`; logs error; HTTP 500 |
+
+Env: `KAFKA_PRODUCER_RETRY_MAX_ATTEMPTS`, `KAFKA_PRODUCER_RETRY_BASE_DELAY_MS`, `KAFKA_PRODUCER_RETRY_MAX_DELAY_MS`, `KAFKA_PRODUCER_RETRY_BACKOFF_MULTIPLIER`.
+
+### Checklist — Logs
+
+| Item | Implementation |
+|------|----------------|
+| Logar criação de pedido | `OrdersService` — `Order created: orderId=...` |
+| Logar publicação Kafka | `EventPublisher` — publish start + success |
+| Logar falhas | `EventPublisher` + `OrdersService` — `logger.error` with stack |
+
+### Checklist — Testes (fluxo completo)
+
+| Step | Command |
+|------|---------|
+| Subir Kafka | `podman-compose -f docker/docker-compose.yml up -d` |
+| Subir order-service | `npm run start:order` (ou container) |
+| POST /orders | `curl -X POST http://localhost:3001/orders -H 'Content-Type: application/json' -d '{...}'` |
+| Validar no Kafka UI | Tópico `order.events` — key = `orderId`, value = envelope JSON |
+| Automatizar validação | `npm run verify:order-kafka` ou `KAFKA_INTEGRATION_TEST=true npm run test:integration -w order-service` |
+
+### Checklist — Idempotência
+
+| Item | Implementation |
+|------|----------------|
+| Strategy | `IdempotencyStrategy.EVENT_ID_PER_AGGREGATE` — one `eventId` per order |
+| Não duplicar eventos | Skip publish if `orders.event_id` already set; payment consumer dedupes by `eventId` |
+| Chave `orderId` | Kafka message key = `orderId` (`resolvePartitionKey`) |
+
+---
+
 ## Event envelope (standard structure)
 
 Every published message uses `EventEnvelope<T>`:
@@ -34,7 +108,8 @@ Every published message uses `EventEnvelope<T>`:
 | Field | Rule |
 |-------|------|
 | `eventId` | UUID v4; unique per message; idempotency key |
-| `eventType` | Canonical event name; equals Kafka topic name |
+| `eventType` | Canonical event name (e.g. `order.created`) |
+| Kafka topic | Physical topic (e.g. `order.events` for `order.created`) — see `resolveKafkaTopic()` |
 | `version` | Schema version (`1.0`) |
 | `timestamp` | ISO-8601 UTC at publish time |
 | `correlationId` | Business flow id — **use `orderId`** for order flows |

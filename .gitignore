@@ -36,6 +36,11 @@ lerna-debug.log*
 *.swp
 *.swo
 
+# SQLite (order-service)
+services/order-service/data/
+*.sqlite
+*.sqlite3
+
 # OS
 .DS_Store
 Thumbs.db

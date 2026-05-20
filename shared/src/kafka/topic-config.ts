@@ -1,3 +1,4 @@
+import { EVENT_CATALOG } from '../events/event-catalog';
 import { ALL_EVENT_TYPES } from '../events/event-types';
 import { DLQ_TOPIC_SUFFIX } from '../events/kafka-topics';
 
@@ -62,8 +63,13 @@ export function buildTopicCreateConfigs(
   ];
 }
 
-/** All base event topics (1:1 with event types) */
-export const BASE_KAFKA_TOPICS: readonly string[] = ALL_EVENT_TYPES;
+/** All Kafka topics used in the catalog (includes domain topics like order.events). */
+export const BASE_KAFKA_TOPICS: readonly string[] = [
+  ...new Set([
+    ...ALL_EVENT_TYPES,
+    ...EVENT_CATALOG.map((entry) => entry.topic),
+  ]),
+];
 
 /** Base topics + DLQ companions */
 export const ALL_KAFKA_TOPICS_WITH_DLQ: readonly string[] =

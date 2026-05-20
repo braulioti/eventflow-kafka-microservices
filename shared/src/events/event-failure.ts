@@ -23,7 +23,7 @@ export interface EventRetryDetails {
  */
 export interface EventFailurePayload {
   kind: 'event.failure';
-  originalTopic: EventTypeValue;
+  originalTopic: string;
   originalEventId: string;
   originalEventType: EventTypeValue;
   originalSource: string;
@@ -60,7 +60,7 @@ export function normalizeError(error: unknown): EventErrorDetails {
  */
 export function createFailureEnvelope(params: {
   original: EventEnvelope<unknown>;
-  originalTopic: EventTypeValue;
+  originalTopic: string;
   service: ServiceName;
   error: unknown;
   attempt: number;

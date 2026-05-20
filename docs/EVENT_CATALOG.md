@@ -31,7 +31,7 @@ Happy path: `order.created → payment.processed → stock.reserved → notifica
 
 | Event | Topic | Producer | Consumers |
 |-------|-------|----------|-----------|
-| `order.created` | `order.created` | order-service | payment-service |
+| `order.created` | `order.events` | order-service | payment-service |
 | `order.cancelled` | `order.cancelled` | order-service | payment, stock, notification |
 | `payment.requested` | `payment.requested` | payment-service | payment-service |
 | `payment.processed` | `payment.processed` | payment-service | stock-service |

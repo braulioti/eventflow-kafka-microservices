@@ -17,6 +17,7 @@
     "start:stock": "npm run start:dev -w stock-service",
     "start:notification": "npm run start:dev -w notification-service",
     "start:dlq": "npm run start:dev -w dlq-service",
-    "test": "npm run test --workspaces --if-present"
+    "test": "npm run test --workspaces --if-present",
+    "verify:order-kafka": "node scripts/verify-order-kafka-flow.mjs"
   }
 }

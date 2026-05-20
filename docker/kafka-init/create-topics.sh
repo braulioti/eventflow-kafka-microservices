@@ -22,7 +22,7 @@ DLQ_SUFFIX=".dlq"
 TOPIC_CONFIG="retention.ms=${RETENTION_MS},cleanup.policy=${CLEANUP_POLICY}"
 
 TOPICS=(
-  "order.created"
+  "order.events"
   "order.cancelled"
   "payment.requested"
   "payment.processed"

@@ -10,7 +10,7 @@ export const EVENT_SCHEMA_VERSION = '1.0';
  * - **eventId** — UUID v4; unique per message; use for idempotency and deduplication.
  * - **correlationId** — business flow id (typically `orderId`); ties all related events.
  * - **timestamp** — ISO-8601 UTC; set at publish time unless overridden for replay.
- * - **eventType** — canonical name; matches Kafka topic name.
+ * - **eventType** — canonical name (e.g. `order.created`); Kafka topic may differ (e.g. `order.events`).
  * - **version** — schema version for safe payload evolution.
  * - **source** — producing service name (e.g. `order-service`).
  * - **causationId** — optional; `eventId` of the event that caused this one.

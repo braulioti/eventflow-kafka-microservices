@@ -13,13 +13,13 @@ export interface PublishOptions {
  */
 export interface KafkaEventTransport {
   publish(
-    topic: EventTypeValue,
+    eventType: EventTypeValue,
     envelope: EventEnvelope<unknown>,
     options?: PublishOptions,
   ): Promise<void>;
 
   publishToDlq(
-    originalTopic: EventTypeValue,
+    eventType: EventTypeValue,
     envelope: EventEnvelope<EventFailurePayload>,
     options?: PublishOptions,
   ): Promise<void>;

@@ -1,5 +1,6 @@
 import type { ServiceName } from '../events/event-catalog';
 import { CONSUMER_GROUP_BY_SERVICE } from './consumer-groups';
+import { resolveProducerRetryPolicy } from './producer-retry-policy';
 
 /** Parses `KAFKA_BOOTSTRAP_SERVERS` (comma-separated) for kafkajs / Nest Kafka. */
 export function resolveKafkaBrokers(): string[] {
@@ -14,6 +15,8 @@ export function resolveKafkaBrokers(): string[] {
  * `allowAutoTopicCreation` simplifies local/docker setups; disable in production.
  */
 export function getKafkaClientConfig(clientId: string) {
+  const producerRetry = resolveProducerRetryPolicy();
+
   return {
     client: {
       clientId,
@@ -21,6 +24,13 @@ export function getKafkaClientConfig(clientId: string) {
     },
     producer: {
       allowAutoTopicCreation: true,
+      /** KafkaJS transport-level retries (backoff between broker send attempts). */
+      retry: {
+        retries: Math.max(producerRetry.maxAttempts - 1, 0),
+        initialRetryTime: producerRetry.baseDelayMs,
+        maxRetryTime: producerRetry.maxDelayMs,
+        multiplier: producerRetry.backoffMultiplier,
+      },
     },
   };
 }

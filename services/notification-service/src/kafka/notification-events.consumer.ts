@@ -32,7 +32,7 @@ export class NotificationEventsConsumer {
     const headers = parseKafkaHeaders(context.getMessage().headers);
 
     const outcome = await this.retryRunner.execute({
-      topic: EventType.STOCK_RESERVED,
+      eventType: EventType.STOCK_RESERVED,
       envelope,
       headers,
       handler: async () => {
@@ -55,7 +55,7 @@ export class NotificationEventsConsumer {
     const headers = parseKafkaHeaders(context.getMessage().headers);
 
     const outcome = await this.retryRunner.execute({
-      topic: EventType.PAYMENT_FAILED,
+      eventType: EventType.PAYMENT_FAILED,
       envelope,
       headers,
       handler: () => this.notificationService.handlePaymentFailed(envelope),
@@ -73,7 +73,7 @@ export class NotificationEventsConsumer {
     const headers = parseKafkaHeaders(context.getMessage().headers);
 
     const outcome = await this.retryRunner.execute({
-      topic: EventType.ORDER_CANCELLED,
+      eventType: EventType.ORDER_CANCELLED,
       envelope,
       headers,
       handler: () => this.notificationService.handleOrderCancelled(envelope),

@@ -9,13 +9,18 @@ import {
   type StockFailedPayload,
   type StockReleasedPayload,
 } from '@eventflow/shared';
+import { OrderStatus } from '../orders/entities/order-status.enum';
+import { OrdersService } from '../orders/orders.service';
 import { KafkaRetryRunner } from './kafka-retry.runner';
 
 @Controller()
 export class OrderEventsConsumer {
   private readonly logger = new Logger(OrderEventsConsumer.name);
 
-  constructor(private readonly retryRunner: KafkaRetryRunner) {}
+  constructor(
+    private readonly retryRunner: KafkaRetryRunner,
+    private readonly ordersService: OrdersService,
+  ) {}
 
   /** Compensation: payment could not complete for this order. */
   @EventPattern(EventType.PAYMENT_FAILED)
@@ -27,10 +32,14 @@ export class OrderEventsConsumer {
     const headers = parseKafkaHeaders(context.getMessage().headers);
 
     const outcome = await this.retryRunner.execute({
-      topic: EventType.PAYMENT_FAILED,
+      eventType: EventType.PAYMENT_FAILED,
       envelope,
       headers,
       handler: async () => {
+        await this.ordersService.updateOrderStatus(
+          envelope.payload.orderId,
+          OrderStatus.FAILED,
+        );
         this.logger.warn(
           `Payment failed for order ${envelope.payload.orderId}: ${envelope.payload.reason}`,
         );
@@ -49,10 +58,14 @@ export class OrderEventsConsumer {
     const headers = parseKafkaHeaders(context.getMessage().headers);
 
     const outcome = await this.retryRunner.execute({
-      topic: EventType.STOCK_RELEASED,
+      eventType: EventType.STOCK_RELEASED,
       envelope,
       headers,
       handler: async () => {
+        await this.ordersService.updateOrderStatus(
+          envelope.payload.orderId,
+          OrderStatus.CANCELLED,
+        );
         this.logger.log(
           `Stock released for order ${envelope.payload.orderId}: ${envelope.payload.reason}`,
         );
@@ -71,10 +84,14 @@ export class OrderEventsConsumer {
     const headers = parseKafkaHeaders(context.getMessage().headers);
 
     const outcome = await this.retryRunner.execute({
-      topic: EventType.STOCK_FAILED,
+      eventType: EventType.STOCK_FAILED,
       envelope,
       headers,
       handler: async () => {
+        await this.ordersService.updateOrderStatus(
+          envelope.payload.orderId,
+          OrderStatus.FAILED,
+        );
         this.logger.warn(
           `Stock failed for order ${envelope.payload.orderId}: ${envelope.payload.reason}`,
         );
@@ -94,10 +111,14 @@ export class OrderEventsConsumer {
     const headers = parseKafkaHeaders(context.getMessage().headers);
 
     const outcome = await this.retryRunner.execute({
-      topic: EventType.NOTIFICATION_SENT,
+      eventType: EventType.NOTIFICATION_SENT,
       envelope,
       headers,
       handler: async () => {
+        await this.ordersService.updateOrderStatus(
+          envelope.payload.orderId,
+          OrderStatus.COMPLETED,
+        );
         this.logger.log(
           `Order flow completed for ${envelope.payload.orderId} — notification sent via ${envelope.payload.channel}`,
         );

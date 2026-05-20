@@ -1,10 +1,11 @@
 /**
- * Subscribes to order.created / order.cancelled and invokes PaymentService under retry.
+ * Subscribes to order.events (order.created) / order.cancelled and invokes PaymentService under retry.
  */
 import { Controller, Logger } from '@nestjs/common';
 import { Ctx, EventPattern, KafkaContext, Payload } from '@nestjs/microservices';
 import {
   EventType,
+  OrderKafkaTopic,
   extractEnvelope,
   parseKafkaHeaders,
   type OrderCancelledPayload,
@@ -16,22 +17,36 @@ import { KafkaRetryRunner } from './kafka-retry.runner';
 @Controller()
 export class PaymentEventsConsumer {
   private readonly logger = new Logger(PaymentEventsConsumer.name);
+  /** In-process dedupe by envelope eventId (consumer idempotency). */
+  private readonly processedEventIds = new Set<string>();
 
   constructor(
     private readonly paymentService: PaymentService,
     private readonly retryRunner: KafkaRetryRunner,
   ) {}
 
-  @EventPattern(EventType.ORDER_CREATED)
-  async handleOrderCreated(
+  @EventPattern(OrderKafkaTopic.ORDER_EVENTS)
+  async handleOrderEvents(
     @Payload() payload: unknown,
     @Ctx() context: KafkaContext,
   ) {
     const envelope = extractEnvelope<OrderCreatedPayload>(payload);
+
+    if (envelope.eventType !== EventType.ORDER_CREATED) {
+      return { acknowledged: true, skipped: true, reason: 'unsupported-event-type' };
+    }
+
+    if (this.processedEventIds.has(envelope.eventId)) {
+      this.logger.log(
+        `Skipping duplicate ${EventType.ORDER_CREATED} (eventId=${envelope.eventId})`,
+      );
+      return { acknowledged: true, outcome: 'duplicate' };
+    }
+
     const headers = parseKafkaHeaders(context.getMessage().headers);
 
     const outcome = await this.retryRunner.execute({
-      topic: EventType.ORDER_CREATED,
+      eventType: EventType.ORDER_CREATED,
       envelope,
       headers,
       handler: async () => {
@@ -39,6 +54,7 @@ export class PaymentEventsConsumer {
           `Processing ${EventType.ORDER_CREATED} for ${envelope.payload.orderId}`,
         );
         await this.paymentService.handleOrderCreated(envelope);
+        this.processedEventIds.add(envelope.eventId);
       },
     });
 
@@ -54,7 +70,7 @@ export class PaymentEventsConsumer {
     const headers = parseKafkaHeaders(context.getMessage().headers);
 
     const outcome = await this.retryRunner.execute({
-      topic: EventType.ORDER_CANCELLED,
+      eventType: EventType.ORDER_CANCELLED,
       envelope,
       headers,
       handler: () => this.paymentService.handleOrderCancelled(envelope),

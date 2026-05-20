@@ -10,7 +10,8 @@ import {
   type KafkaEventTransport,
   type PublishOptions,
   envelopeToKafkaHeaders,
-  getOrderIdFromPayload,
+  resolveKafkaTopic,
+  resolvePartitionKey,
   toDlqTopic,
 } from '@eventflow/shared';
 
@@ -27,13 +28,12 @@ export class EventPublisher implements OnModuleInit, KafkaEventTransport {
   }
 
   async publish<T extends keyof EventPayloadMap>(
-    topic: EventTypeValue,
+    eventType: EventTypeValue,
     envelope: EventEnvelope<EventPayloadMap[T]>,
     options?: PublishOptions,
   ): Promise<void> {
-    const partitionKey = getOrderIdFromPayload(
-      envelope.payload as { orderId: string },
-    );
+    const kafkaTopic = resolveKafkaTopic(eventType);
+    const partitionKey = resolvePartitionKey(envelope);
 
     const headers = {
       ...envelopeToKafkaHeaders(envelope),
@@ -41,7 +41,7 @@ export class EventPublisher implements OnModuleInit, KafkaEventTransport {
     };
 
     await firstValueFrom(
-      this.kafkaClient.emit(topic, {
+      this.kafkaClient.emit(kafkaTopic, {
         key: partitionKey,
         value: envelope,
         headers,
@@ -50,12 +50,12 @@ export class EventPublisher implements OnModuleInit, KafkaEventTransport {
   }
 
   async publishToDlq(
-    originalTopic: EventTypeValue,
+    eventType: EventTypeValue,
     envelope: EventEnvelope<EventFailurePayload>,
     options?: PublishOptions,
   ): Promise<void> {
     const partitionKey = envelope.payload.correlationId;
-    const dlqTopic = toDlqTopic(originalTopic);
+    const dlqTopic = toDlqTopic(resolveKafkaTopic(eventType));
     const headers = {
       ...envelopeToKafkaHeaders(envelope),
       ...options?.headers,

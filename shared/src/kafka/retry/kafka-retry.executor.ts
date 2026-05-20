@@ -11,6 +11,7 @@ import type { EventEnvelope } from '../../events/envelope';
 import { envelopeToKafkaHeaders } from '../envelope-kafka';
 import type { KafkaEventTransport } from '../kafka-event-transport';
 import type { EventTypeValue } from '../../events/event-types';
+import { resolveKafkaTopic } from '../../events/resolve-kafka-topic';
 import {
   buildRetryHeaders,
   getRetryAt,
@@ -30,7 +31,8 @@ export type RetryOutcome = 'success' | 'retry' | 'dlq';
 
 /** Parameters for running domain logic with shared retry/DLQ behavior. */
 export interface ExecuteWithRetryParams {
-  topic: EventTypeValue;
+  /** Canonical event type (used to resolve Kafka topic and DLQ routing). */
+  eventType: EventTypeValue;
   envelope: EventEnvelope<unknown>;
   headers?: Record<string, string>;
   handler: () => Promise<void>;
@@ -65,13 +67,13 @@ export class KafkaRetryExecutor {
       const nextAttempt = currentAttempt + 1;
 
       if (shouldSendToDlq(nextAttempt, this.policy)) {
-        await this.sendToDlq(params.topic, params.envelope, error, nextAttempt);
+        await this.sendToDlq(params.eventType, params.envelope, error, nextAttempt);
         return 'dlq';
       }
 
       if (shouldRetry(nextAttempt, this.policy)) {
         await this.scheduleRetry(
-          params.topic,
+          params.eventType,
           params.envelope,
           headers,
           nextAttempt,
@@ -79,17 +81,18 @@ export class KafkaRetryExecutor {
         return 'retry';
       }
 
-      await this.sendToDlq(params.topic, params.envelope, error, nextAttempt);
+      await this.sendToDlq(params.eventType, params.envelope, error, nextAttempt);
       return 'dlq';
     }
   }
 
   private async scheduleRetry(
-    topic: EventTypeValue,
+    eventType: EventTypeValue,
     envelope: EventEnvelope<unknown>,
     headers: Record<string, string>,
     nextAttempt: number,
   ): Promise<void> {
+    const kafkaTopic = resolveKafkaTopic(eventType);
     const backoffMs = calculateBackoffMs(nextAttempt, this.policy);
     const retryAt = Date.now() + backoffMs;
 
@@ -100,28 +103,29 @@ export class KafkaRetryExecutor {
       retryCount: nextAttempt,
       maxAttempts: this.policy.maxAttempts,
       retryAt,
-      originalTopic: topic,
+      originalTopic: kafkaTopic,
       envelopeHeaders,
     });
 
-    await this.transport.publish(topic, envelope, { headers: retryHeaders });
+    await this.transport.publish(eventType, envelope, { headers: retryHeaders });
   }
 
   private async sendToDlq(
-    topic: EventTypeValue,
+    eventType: EventTypeValue,
     envelope: EventEnvelope<unknown>,
     error: unknown,
     attempt: number,
   ): Promise<void> {
+    const kafkaTopic = resolveKafkaTopic(eventType);
     const failureEnvelope = createFailureEnvelope({
       original: envelope,
-      originalTopic: topic,
+      originalTopic: kafkaTopic,
       service: this.service,
       error,
       attempt,
       policy: this.policy,
     });
 
-    await this.transport.publishToDlq(topic, failureEnvelope);
+    await this.transport.publishToDlq(eventType, failureEnvelope);
   }
 }

@@ -12,8 +12,8 @@ export const ALL_KAFKA_TOPICS: readonly KafkaTopicValue[] = ALL_EVENT_TYPES;
 
 export const DLQ_TOPIC_SUFFIX = '.dlq';
 
-/** Companion dead-letter topic name for a base event topic. */
-export function toDlqTopic(topic: KafkaTopicValue): string {
+/** Companion dead-letter topic name for a base Kafka topic. */
+export function toDlqTopic(topic: string): string {
   return `${topic}${DLQ_TOPIC_SUFFIX}`;
 }
 

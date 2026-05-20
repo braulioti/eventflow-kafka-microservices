@@ -59,7 +59,7 @@ flowchart LR
 
 | Service | Role |
 |---------|------|
-| **order-service** | Creates orders and publishes `order.created` events. |
+| **order-service** | `POST /orders` — validates input, persists orders in **SQLite**, publishes `order.created`. |
 | **payment-service** | Processes payments and publishes `payment.processed` or failure events. |
 | **stock-service** | Reserves inventory and publishes `stock.reserved` events. |
 | **notification-service** | Sends notifications when the flow completes (`order.completed`). |
@@ -81,6 +81,8 @@ flowchart LR
 | Observability (local) | [Kafka UI](https://github.com/provectus/kafka-ui) |
 | Containers | Docker / Podman |
 | Monorepo | npm workspaces |
+| Persistence (orders) | SQLite via TypeORM (`better-sqlite3`) |
+| Validation | `class-validator` + `class-transformer` |
 
 ---
 
@@ -106,8 +108,10 @@ eventflow-kafka-microservices/
 │   └── dlq-service/
 ├── shared/                             # @eventflow/shared — events, topics, envelopes
 ├── docs/
-│   ├── EVENT_MODELING.md               # Core events, topics, envelope rules
-│   └── EVENT_CATALOG.md                # Full event catalog reference
+│   ├── PROJECT_DETAILS.md              # Full project guide (business + technical)
+│   ├── EVENT_MODELING.md               # Core events, topics, envelope, POST /orders
+│   ├── EVENT_CATALOG.md                # Full event catalog reference
+│   └── RETRY_DLQ.md                    # Retry and DLQ strategy
 ├── scripts/                            # Automation scripts (planned)
 ├── .env                                # Local environment variables
 ├── .dockerignore
@@ -132,7 +136,7 @@ eventflow-kafka-microservices/
 ```bash
 git clone <repository-url>
 cd eventflow-kafka-microservices
-cp .env.example .env.example.local   # optional — adjust variables if needed
+cp .env.example .env   # adjust variables if needed
 ```
 
 ### 2. Start infrastructure (Kafka)
@@ -279,6 +283,7 @@ podman build -f docker/services/order-service/Dockerfile -t eventflow-order-serv
 |----------|---------|-------------|
 | `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092` | Kafka broker (host development) |
 | `ORDER_SERVICE_PORT` | `3001` | order-service HTTP port |
+| `ORDER_DATABASE_PATH` | `./services/order-service/data/orders.sqlite` | SQLite file for orders |
 | `PAYMENT_SERVICE_PORT` | `3002` | payment-service HTTP port |
 | `STOCK_SERVICE_PORT` | `3003` | stock-service HTTP port |
 | `NOTIFICATION_SERVICE_PORT` | `3004` | notification-service HTTP port |

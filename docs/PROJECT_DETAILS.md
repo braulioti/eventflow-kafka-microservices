@@ -73,7 +73,7 @@ The catalog models branches that production systems need. Consumers exist for th
 
 | Service | Port (default) | Business responsibility |
 |---------|----------------|-------------------------|
-| **order-service** | 3001 | Entry point: accepts `POST /orders`, creates `orderId`, publishes `order.created`. Listens for terminal and failure events (`notification.sent`, `payment.failed`, `stock.failed`, `stock.released`). |
+| **order-service** | 3001 | `POST /orders` with **class-validator**, persists to **SQLite**, publishes `order.created`. Updates order status from Kafka (`notification.sent` → completed, failures → failed/cancelled). |
 | **payment-service** | 3002 | Charges the order: on `order.created`, records `payment.requested` then `payment.processed`. Can react to `order.cancelled`. |
 | **stock-service** | 3003 | Reserves inventory after successful payment: `payment.processed` → `stock.reserved`. On cancellation, publishes `stock.released`. |
 | **notification-service** | 3004 | Customer communications: `stock.reserved` → `notification.send` → `notification.sent`. Also listens for `payment.failed` and `order.cancelled`. |
@@ -471,9 +471,12 @@ curl -X POST http://localhost:3001/orders \
 ```
 
 - **Service:** order-service (`OrdersController` → `OrdersService`)
+- **Validation:** Global `ValidationPipe` + `class-validator` on `CreateOrderDto` / `OrderItemDto` (required fields, min quantities, optional `currency`)
+- **Persistence:** Order + line items saved to **SQLite** (`ORDER_DATABASE_PATH`, TypeORM `synchronize: true` in dev)
 - **Action:** Generates `orderId` (UUID), computes `totalAmount`, builds envelope with `correlationId = orderId`
 - **Publishes:** `order.created` → topic `order.created`, key = `orderId`
-- **HTTP response:** `{ orderId, status: "pending", eventId }`
+- **HTTP response (201):** `{ orderId, status: "pending", totalAmount, currency, eventId, createdAt }`
+- **Status updates:** Kafka consumers update SQLite (`completed` on `notification.sent`, `failed` on payment/stock failures)
 
 ---
 
