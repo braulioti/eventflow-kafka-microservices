@@ -256,11 +256,11 @@ Domain events, Kafka topics, payloads, and envelopes are defined in `@eventflow/
 
 Each service runs as a **hybrid app** (HTTP + Kafka consumer) via `@nestjs/microservices`.
 
-- [docs/RULES.md](docs/RULES.md) — **regras completas** do sistema (tópicos, partições, scale, producer, troubleshooting)
-- [docs/PROJECT_DETAILS.md](docs/PROJECT_DETAILS.md) — guia passo a passo (arquitetura, runbook)
-- [docs/EVENT_MODELING.md](docs/EVENT_MODELING.md) — eventos core, partições, envelope
-- [docs/EVENT_CATALOG.md](docs/EVENT_CATALOG.md) — catálogo de eventos
-- [docs/RETRY_DLQ.md](docs/RETRY_DLQ.md) — retry e DLQ
+- [docs/RULES.md](docs/RULES.md) — **complete system rules** (topics, partitions, scale, producer, troubleshooting)
+- [docs/PROJECT_DETAILS.md](docs/PROJECT_DETAILS.md) — step-by-step guide (architecture, runbook)
+- [docs/EVENT_MODELING.md](docs/EVENT_MODELING.md) — core events, partitions, envelope
+- [docs/EVENT_CATALOG.md](docs/EVENT_CATALOG.md) — event catalog
+- [docs/RETRY_DLQ.md](docs/RETRY_DLQ.md) — retry and DLQ
 
 Core flow: `order.created → payment.processed → stock.reserved → notification.sent`
 
@@ -316,36 +316,36 @@ podman build -f docker/services/order-service/Dockerfile -t eventflow-order-serv
 
 ## Environment variables
 
-Ver também [docs/RULES.md](docs/RULES.md) e `.env.example`.
+See also [docs/RULES.md](docs/RULES.md) and `.env.example`.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092` | Broker (host); Docker usa `kafka:29092` |
-| `KAFKA_TOPIC_PARTITIONS` | `3` | Partitions em `kafka-init` / `kafka:partitions` |
-| `KAFKA_RETRY_*` | ver `.env.example` | Retry producer/consumer — **não deixe vazio** |
-| `KAFKA_CONSUMER_GROUP_PAYMENT_SERVICE` | `eventflow.payment-service` | Mesmo valor em todas as réplicas payment |
+| `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092` | Broker (host); Docker uses `kafka:29092` |
+| `KAFKA_TOPIC_PARTITIONS` | `3` | Partitions in `kafka-init` / `kafka:partitions` |
+| `KAFKA_RETRY_*` | see `.env.example` | Retry producer/consumer — **do not leave empty** |
+| `KAFKA_CONSUMER_GROUP_PAYMENT_SERVICE` | `eventflow.payment-service` | Same value on all payment replicas |
 | `ORDER_SERVICE_PORT` | `3001` | order-service HTTP |
-| `ORDER_DATABASE_PATH` | `./services/order-service/data/orders.sqlite` | SQLite pedidos |
+| `ORDER_DATABASE_PATH` | `./services/order-service/data/orders.sqlite` | SQLite orders |
 | `PAYMENT_SERVICE_PORT` | `3002` | payment-service-1 HTTP (Docker) |
-| `PAYMENT_DATABASE_PATH` | ver `.env.example` | Idempotência; Docker: `/data/payments.sqlite` |
-| `PAYMENT_FAILURE_RATE` | `0.2` | Simulação ~80% aprovação |
+| `PAYMENT_DATABASE_PATH` | see `.env.example` | Idempotency; Docker: `/data/payments.sqlite` |
+| `PAYMENT_FAILURE_RATE` | `0.2` | Simulation ~80% approval |
 | `PAYMENT_SERVICE_REPLICAS` | `2` | `docker:payment-instances` |
-| `PAYMENT_DOCKER_MODE` | `named` | `named` ou `scale` |
+| `PAYMENT_DOCKER_MODE` | `named` | `named` or `scale` |
 | `STOCK_SERVICE_PORT` | `3003` | stock-service |
 | `NOTIFICATION_SERVICE_PORT` | `3004` | notification-service |
 | `DLQ_SERVICE_PORT` | `3005` | dlq-service |
 
-## npm scripts (validação)
+## npm scripts (verification)
 
-| Script | Descrição |
-|--------|-----------|
-| `npm run verify:order-kafka` | POST /orders + mensagem em `order.events` |
-| `npm run verify:payment-flow` | Fluxo order → payment |
-| `npm run verify:payment-scale` | Consumer group com 2+ members |
-| `npm run verify:kafka-partitions` | Partitions, key, distribuição, balanceamento |
-| `npm run kafka:partitions` | Altera `order.events` / `payment.events` → 3 partitions |
-| `npm run docker:payment-instances` | Sobe réplicas payment |
-| `npm run docker:rebuild-services` | Rebuild imagens após mudança de código |
+| Script | Description |
+|--------|-------------|
+| `npm run verify:order-kafka` | POST /orders + message on `order.events` |
+| `npm run verify:payment-flow` | order → payment flow |
+| `npm run verify:payment-scale` | Consumer group with 2+ members |
+| `npm run verify:kafka-partitions` | Partitions, key, distribution, balancing |
+| `npm run kafka:partitions` | Sets `order.events` / `payment.events` to 3 partitions |
+| `npm run docker:payment-instances` | Starts payment replicas |
+| `npm run docker:rebuild-services` | Rebuild images after code changes |
 
 Inside Docker, microservices use `KAFKA_BOOTSTRAP_SERVERS=kafka:29092` via `docker/services/docker-compose.yml`.
 

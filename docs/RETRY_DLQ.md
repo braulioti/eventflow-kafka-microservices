@@ -1,6 +1,6 @@
 # Retry & DLQ Strategy
 
-> Regras gerais: [RULES.md](./RULES.md) (§6 Producer, §7 Consumer).
+> General rules: [RULES.md](./RULES.md) (§6 Producer, §7 Consumer).
 
 ## Policy (default)
 
@@ -15,9 +15,9 @@ Consumer policy resolver: `resolveConsumerRetryPolicy()` in `shared/src/kafka/re
 
 Producer policy resolver: `resolveProducerRetryPolicy()` in `shared/src/kafka/producer-retry-policy.ts`.
 
-### Variáveis vazias no `.env`
+### Empty variables in `.env`
 
-**Não defina** `KAFKA_RETRY_MAX_ATTEMPTS=` (ou outras) com valor vazio. Isso gera `NaN` e o `publishWithProducerRetry` falha sem mensagem clara (`undefined`). Use números ou omita a variável (fallback para defaults em `DEFAULT_RETRY_POLICY`).
+**Do not set** `KAFKA_RETRY_MAX_ATTEMPTS=` (or others) with an empty value. That produces `NaN` and `publishWithProducerRetry` fails without a clear message (`undefined`). Use numbers or omit the variable (fallback to defaults in `DEFAULT_RETRY_POLICY`).
 
 Backoff formula: `min(baseDelay × multiplier^(attempt-1), maxDelay)`
 

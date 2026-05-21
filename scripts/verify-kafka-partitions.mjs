@@ -62,7 +62,7 @@ async function produceWithKey(producer, key, label) {
 }
 
 async function testKeyOrdering(producer) {
-  console.log('\n=== 1) Ordenação por key (mesma key → mesma partition) ===');
+  console.log('\n=== 1) Ordering by key (same key → same partition) ===');
   const stickyKey = 'order-sticky-abc';
   const partitions = [];
   for (let i = 0; i < 5; i++) {
@@ -74,18 +74,18 @@ async function testKeyOrdering(producer) {
     unique.size === 1,
     `Expected one partition for key ${stickyKey}, got ${[...unique].join(', ')}`,
   );
-  console.log('   ✓ Mesma partition key mantém ordem por partição no Kafka');
+  console.log('   ✓ Same partition key preserves per-partition order in Kafka');
 }
 
 async function testDistribution(producer) {
-  console.log('\n=== 2) Distribuição entre partitions ===');
+  console.log('\n=== 2) Distribution across partitions ===');
   const records = [];
   const keys = Array.from({ length: 30 }, (_, i) => `order-dist-${String(i).padStart(3, '0')}`);
   for (const key of keys) {
     records.push({ key, partition: await produceWithKey(producer, key, key) });
   }
   const spread = partitionSpread(records);
-  console.log('   Histogram (30 keys distintas):');
+  console.log('   Histogram (30 distinct keys):');
   for (const [partition, count] of [...spread.entries()].sort((a, b) => a[0] - b[0])) {
     console.log(`     partition ${partition}: ${count} message(s)`);
   }
@@ -94,21 +94,21 @@ async function testDistribution(producer) {
     `Expected messages across >= 2 partitions, got ${spread.size}. Increase keys or partitions.`,
   );
   if (spread.size >= EXPECTED_PARTITIONS) {
-    console.log(`   ✓ Usando ${spread.size}/${EXPECTED_PARTITIONS} partitions`);
+    console.log(`   ✓ Using ${spread.size}/${EXPECTED_PARTITIONS} partitions`);
   } else {
     console.log(
-      `   ⚠ Usando ${spread.size}/${EXPECTED_PARTITIONS} partitions (aceitável; hashing pode concentrar)`,
+      `   ⚠ Using ${spread.size}/${EXPECTED_PARTITIONS} partitions (acceptable; hashing may cluster)`,
     );
   }
 }
 
 async function testHashStability() {
-  console.log('\n=== 3) Estabilidade do hash (key → partition previsível) ===');
+  console.log('\n=== 3) Hash stability (key → predictable partition) ===');
   const key = 'order-hash-check';
   const h = createHash('md5').update(key).digest();
   const pseudoPartition = h.readUInt32BE(0) % EXPECTED_PARTITIONS;
   console.log(`   key=${key} → hash mod ${EXPECTED_PARTITIONS} ≈ partition ${pseudoPartition}`);
-  console.log('   (Kafka usa murmur2; o teste 1 já valida stickiness real no broker)');
+  console.log('   (Kafka uses murmur2; test 1 already validates real broker stickiness)');
 }
 
 async function createOrders(batchSize) {
@@ -132,7 +132,7 @@ async function createOrders(batchSize) {
 }
 
 async function testApiFlow(partitionCount) {
-  console.log('\n=== 4) Fluxo real: POST /orders → order.events ===');
+  console.log('\n=== 4) Real flow: POST /orders → order.events ===');
   const consumer = kafka.consumer({ groupId: `verify-partitions-${Date.now()}` });
   const seen = [];
 
@@ -223,7 +223,7 @@ async function testApiFlow(partitionCount) {
       keyToPartition.set(msg.key, msg.partition);
     }
   }
-  console.log('   ✓ Cada orderId mapeia para uma única partition (ordenacao por pedido)');
+  console.log('   ✓ Each orderId maps to a single partition (per-order ordering)');
 }
 
 function describeGroupViaPodman(groupId) {
@@ -258,7 +258,7 @@ function parseOrderEventsAssignments(text) {
 }
 
 async function describePaymentGroupBalance(admin) {
-  console.log('\n=== 5) Balanceamento do consumer group (payment-service) ===');
+  console.log('\n=== 5) Consumer group balancing (payment-service) ===');
   try {
     const { groups } = await admin.listGroups();
     const match =
@@ -293,17 +293,17 @@ async function describePaymentGroupBalance(admin) {
         }
       }
       const allPartitions = new Set([...assignments.values()].flat());
-      console.log(`   Partitions cobertas em order.events: [${[...allPartitions].sort().join(', ')}]`);
+      console.log(`   Partitions covered on order.events: [${[...allPartitions].sort().join(', ')}]`);
       if (membersWithOrderEvents >= 2 && allPartitions.size >= 2) {
-        console.log('   ✓ Balanceamento: 2+ consumers e 2+ partitions atribuídas');
+        console.log('   ✓ Balancing: 2+ consumers and 2+ assigned partitions');
       } else if (membersWithOrderEvents === 1) {
         console.log(
-          '   ⚠ Um único consumer em order.events — aumente partitions e reinicie payments',
+          '   ⚠ Only one consumer on order.events — increase partitions and restart payments',
         );
       }
     } else {
       console.log(
-        '   (Detalhe de assignment: podman exec eventflow-kafka kafka-consumer-groups --describe --group ' +
+        '   (Assignment detail: podman exec eventflow-kafka kafka-consumer-groups --describe --group ' +
           `${group.groupId} --members --verbose)`,
       );
     }

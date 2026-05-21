@@ -340,12 +340,12 @@ Details: [EVENT_MODELING.md](./EVENT_MODELING.md), `shared/src/events/envelope-s
 
 #### Topic layout
 
-- **Tópicos agregados:** `order.events` (`order.created`), `payment.events` (`payment.processed`, `payment.failed`)
-- **Demais eventos:** um tópico por `eventType` (ex.: `stock.reserved`)
-- **DLQ:** `{topic}.dlq` para cada tópico base
-- Criados por `docker/kafka-init/create-topics.sh` — ver [RULES.md](./RULES.md)
+- **Aggregate topics:** `order.events` (`order.created`), `payment.events` (`payment.processed`, `payment.failed`)
+- **Other events:** one topic per `eventType` (e.g. `stock.reserved`)
+- **DLQ:** `{topic}.dlq` for each base topic
+- Created by `docker/kafka-init/create-topics.sh` — see [RULES.md](./RULES.md)
 
-Tópicos principais do `kafka-init`:
+Main topics from `kafka-init`:
 
 `order.events`, `order.cancelled`, `payment.requested`, `payment.events`, `stock.reserved`, `stock.released`, `stock.failed`, `notification.send`, `notification.sent`, `notification.failed` (+ DLQs)
 
@@ -359,7 +359,7 @@ Tópicos principais do `kafka-init`:
 
 Consumer groups (one per service, enables horizontal scale up to partition count):
 
-| Service | Group id (config) | No broker (Nest `-server`) |
+| Service | Group id (config) | On broker (Nest `-server`) |
 |---------|-------------------|----------------------------|
 | order-service | `eventflow.order-service` | `eventflow.order-service-server` |
 | payment-service | `eventflow.payment-service` | `eventflow.payment-service-server` |
@@ -367,7 +367,7 @@ Consumer groups (one per service, enables horizontal scale up to partition count
 | notification-service | `eventflow.notification-service` | `eventflow.notification-service-server` |
 | dlq-service | `eventflow.dlq-service` | `eventflow.dlq-service-server` |
 
-**Payment horizontal scale:** `payment-service-1`, `payment-service-2` (mesmo groupId). Ver [RULES.md §4](./RULES.md#4-consumer-groups-e-escalabilidade-horizontal).
+**Payment horizontal scale:** `payment-service-1`, `payment-service-2` (same groupId). See [RULES.md §4](./RULES.md#4-consumer-groups-and-horizontal-scaling).
 
 #### Retention
 
@@ -542,7 +542,7 @@ curl -X POST http://localhost:3001/orders \
 
 | Document | Description |
 |----------|-------------|
-| [RULES.md](./RULES.md) | **Regras consolidadas** — tópicos, partições, scale, producer, troubleshooting |
+| [RULES.md](./RULES.md) | **Consolidated rules** — topics, partitions, scale, producer, troubleshooting |
 | [README.md](../README.md) | Quick start, ports, curl examples |
 | [EVENT_CATALOG.md](./EVENT_CATALOG.md) | Full event list, producers, consumers, envelope example |
 | [EVENT_MODELING.md](./EVENT_MODELING.md) | Core events, checklists, partition strategy, envelope |

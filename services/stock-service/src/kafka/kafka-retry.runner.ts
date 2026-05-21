@@ -1,7 +1,7 @@
 /**
  * Stock Service — Kafka Consumer Retry Runner
  *
- * Thin NestJS façade over the shared {@link KafkaRetryExecutor}. Consumer
+ * Thin NestJS facade over the shared {@link KafkaRetryExecutor}. Consumer
  * handlers delegate transient failures to this runner, which applies the
  * environment-driven retry policy (backoff, max attempts) and publishes to DLQ
  * when retries are exhausted.

@@ -1,20 +1,20 @@
-# Regras do sistema EventFlow
+# EventFlow System Rules
 
-Referência consolidada de todas as regras de arquitetura, Kafka, Docker e operação definidas para o projeto.  
-Documentos relacionados: [EVENT_MODELING.md](./EVENT_MODELING.md), [EVENT_CATALOG.md](./EVENT_CATALOG.md), [RETRY_DLQ.md](./RETRY_DLQ.md).
+Consolidated reference for all architecture, Kafka, Docker, and operations rules defined for the project.  
+Related documents: [EVENT_MODELING.md](./EVENT_MODELING.md), [EVENT_CATALOG.md](./EVENT_CATALOG.md), [RETRY_DLQ.md](./RETRY_DLQ.md).
 
 ---
 
-## 1. Fluxo de negócio (core)
+## 1. Business flow (core)
 
-| Ordem | `eventType` | Tópico Kafka | Producer | Consumer(s) |
+| Order | `eventType` | Kafka topic | Producer | Consumer(s) |
 |-------|-------------|--------------|----------|-------------|
 | 1 | `order.created` | **`order.events`** | order-service | payment-service |
 | 2 | `payment.processed` | **`payment.events`** | payment-service | stock-service |
 | 3 | `stock.reserved` | `stock.reserved` | stock-service | notification-service |
 | 4 | `notification.sent` | `notification.sent` | notification-service | order-service |
 
-**Ramificação de falha:** `payment.failed` → tópico **`payment.events`** → order-service, notification-service.
+**Failure branch:** `payment.failed` → topic **`payment.events`** → order-service, notification-service.
 
 ```
 order.created → payment.processed → stock.reserved → notification.sent
@@ -22,61 +22,61 @@ order.created → payment.processed → stock.reserved → notification.sent
                payment.failed
 ```
 
-**Regra:** o campo `eventType` no envelope permanece canônico (`order.created`, `payment.processed`, …). O **tópico físico** é resolvido por `resolveKafkaTopic()` em `shared/src/events/resolve-kafka-topic.ts`.
+**Rule:** the `eventType` field in the envelope stays canonical (`order.created`, `payment.processed`, …). The **physical topic** is resolved by `resolveKafkaTopic()` in `shared/src/events/resolve-kafka-topic.ts`.
 
-| `eventType` | Tópico físico (override) |
+| `eventType` | Physical topic (override) |
 |-------------|-------------------------|
 | `order.created` | `order.events` |
 | `payment.processed` | `payment.events` |
 | `payment.failed` | `payment.events` |
-| Demais | igual ao `eventType` (ex.: `stock.reserved`) |
+| Others | same as `eventType` (e.g. `stock.reserved`) |
 
-**Legado:** mensagens antigas podem existir no tópico `order.created`. O payment-service **só** consome `order.events`. Após mudança de modelo, crie pedidos novos ou reprocesse manualmente.
+**Legacy:** old messages may exist on topic `order.created`. payment-service **only** consumes `order.events`. After a model change, create new orders or reprocess manually.
 
 ---
 
-## 2. Envelope e correlação
+## 2. Envelope and correlation
 
-| Campo | Regra |
+| Field | Rule |
 |-------|--------|
-| `eventId` | UUID v4; único por mensagem; chave de idempotência |
-| `correlationId` | **`orderId`** em fluxos de pedido |
-| `causationId` | Opcional; `eventId` do evento causador |
-| `timestamp` | ISO-8601 UTC no publish |
-| `version` | `1.0` (padrão) |
-| `source` | Nome do serviço produtor (`order-service`, …) |
-| `payload.orderId` | Obrigatório em eventos do fluxo de pedido |
+| `eventId` | UUID v4; unique per message; idempotency key |
+| `correlationId` | **`orderId`** in order flows |
+| `causationId` | Optional; `eventId` of the causing event |
+| `timestamp` | ISO-8601 UTC at publish |
+| `version` | `1.0` (default) |
+| `source` | Producing service name (`order-service`, …) |
+| `payload.orderId` | Required in order-flow events |
 
-Factory: `createEventEnvelope()` em `shared/src/events/create-envelope.ts`.
+Factory: `createEventEnvelope()` in `shared/src/events/create-envelope.ts`.
 
 ---
 
-## 3. Partições, chave e ordenação
+## 3. Partitions, key, and ordering
 
-| Regra | Detalhe |
+| Rule | Detail |
 |-------|---------|
-| **Partition key** | Sempre `orderId` (`resolvePartitionKey`) |
-| **Partições padrão** | **3** em tópicos criados pelo `kafka-init` |
-| **Tópicos agregados com alter** | `order.events`, `payment.events` (script garante ≥ 3 partições) |
-| **Ordenação** | Eventos do **mesmo pedido** → **mesma partition** → ordem preservada na partition |
-| **Throughput horizontal** | Máximo de consumidores úteis no grupo = **número de partitions** do tópico |
+| **Partition key** | Always `orderId` (`resolvePartitionKey`) |
+| **Default partitions** | **3** on topics created by `kafka-init` |
+| **Aggregated topics with alter** | `order.events`, `payment.events` (script ensures ≥ 3 partitions) |
+| **Ordering** | Events for the **same order** → **same partition** → order preserved within the partition |
+| **Horizontal throughput** | Max useful consumers in the group = **number of partitions** on the topic |
 
-**Comandos:**
+**Commands:**
 
 ```bash
 npm run kafka:partitions          # alter → 3 partitions
-npm run verify:kafka-partitions   # distribuição + key + balanceamento
+npm run verify:kafka-partitions   # distribution + key + balancing
 ```
 
-Após alterar partitions: `restart payment-service-1 payment-service-2` para rebalancear.
+After altering partitions: `restart payment-service-1 payment-service-2` to rebalance.
 
 ---
 
-## 4. Consumer groups e escalabilidade horizontal
+## 4. Consumer groups and horizontal scaling
 
-### 4.1 Group IDs (configuração)
+### 4.1 Group IDs (configuration)
 
-| Serviço | `groupId` configurado (`resolveConsumerGroup`) |
+| Service | Configured `groupId` (`resolveConsumerGroup`) |
 |---------|-----------------------------------------------|
 | order-service | `eventflow.order-service` |
 | payment-service | `eventflow.payment-service` |
@@ -84,47 +84,47 @@ Após alterar partitions: `restart payment-service-1 payment-service-2` para reb
 | notification-service | `eventflow.notification-service` |
 | dlq-service | `eventflow.dlq-service` |
 
-Override por serviço: `KAFKA_CONSUMER_GROUP_<SERVICE>` (ex.: `KAFKA_CONSUMER_GROUP_PAYMENT_SERVICE`).
+Per-service override: `KAFKA_CONSUMER_GROUP_<SERVICE>` (e.g. `KAFKA_CONSUMER_GROUP_PAYMENT_SERVICE`).
 
-### 4.2 NestJS — sufixo `-server`
+### 4.2 NestJS — `-server` suffix
 
-O microserviço Kafka do Nest registra o consumer com sufixo **`-server`** no broker.
+The Nest Kafka microservice registers the consumer with a **`-server`** suffix on the broker.
 
-| Config / log app | Grupo no broker (Kafka UI / CLI) |
+| Config / app log | Group on broker (Kafka UI / CLI) |
 |------------------|----------------------------------|
 | `eventflow.payment-service` | **`eventflow.payment-service-server`** |
 
-Scripts de verificação de balanceamento usam `eventflow.payment-service-server`.
+Balance verification scripts use `eventflow.payment-service-server`.
 
-### 4.3 Múltiplas instâncias do payment-service
+### 4.3 Multiple payment-service instances
 
-| Regra | Valor |
+| Rule | Value |
 |-------|--------|
-| Mesmo `groupId` em todas as réplicas | **Obrigatório** — senão o mesmo evento é processado mais de uma vez |
-| `clientId` distinto por instância | `payment-service-consumer-<HOSTNAME>` (automático via `HOSTNAME` do container) |
-| **Não** misturar modos Docker | Não subir `payment-service-1/2` **e** `payment-service` com `--scale` ao mesmo tempo |
+| Same `groupId` on all replicas | **Required** — otherwise the same event is processed more than once |
+| Distinct `clientId` per instance | `payment-service-consumer-<HOSTNAME>` (automatic via container `HOSTNAME`) |
+| **Do not** mix Docker modes | Do not run `payment-service-1/2` **and** `payment-service` with `--scale` at the same time |
 
-**Docker (padrão):**
+**Docker (default):**
 
 | Container | HTTP host | Consumer |
 |-----------|-----------|----------|
-| `payment-service-1` | porta **3002** | sim |
-| `payment-service-2` | sem porta publicada | sim |
-| `payment-service-3` | profile `payment-scale-3` | sim |
+| `payment-service-1` | port **3002** | yes |
+| `payment-service-2` | no published port | yes |
+| `payment-service-3` | profile `payment-scale-3` | yes |
 
 ```bash
 npm run docker:payment-instances
 npm run verify:payment-scale
 ```
 
-**Balanceamento (exemplo com 3 partitions em `order.events`):**
+**Balancing (example with 3 partitions on `order.events`):**
 
 ```text
 payment-service-1 → order.events(2), order.cancelled(0,1)
 payment-service-2 → order.events(0,1), order.cancelled(2)
 ```
 
-Logs de consumo de pedido: ver **`payment-service-2`** (ou qualquer instância que tenha partition de `order.events` no assignment).
+Order consumption logs: check **`payment-service-2`** (or any instance assigned an `order.events` partition).
 
 ```bash
 podman exec eventflow-kafka kafka-consumer-groups \
@@ -132,92 +132,92 @@ podman exec eventflow-kafka kafka-consumer-groups \
   --describe --group eventflow.payment-service-server --members --verbose
 ```
 
-### 4.4 Idempotência entre réplicas (payment)
+### 4.4 Idempotency across replicas (payment)
 
-| Item | Regra |
+| Item | Rule |
 |------|--------|
-| Armazenamento | SQLite em `PAYMENT_DATABASE_PATH` |
-| Docker | Volume compartilhado **`payment-idempotency`** → `/data/payments.sqlite` |
-| Chave | `processed_events.inbound_event_id` (PK) |
-| Mesmo `orderId` | Bloqueia segundo pagamento `approved` |
+| Storage | SQLite at `PAYMENT_DATABASE_PATH` |
+| Docker | Shared volume **`payment-idempotency`** → `/data/payments.sqlite` |
+| Key | `processed_events.inbound_event_id` (PK) |
+| Same `orderId` | Blocks a second `approved` payment |
 
-**Demo:** volume compartilhado é aceitável para aprendizado; em produção use Postgres/Redis para muitas réplicas.
-
----
-
-## 5. Idempotência (order-service)
-
-| Regra | Implementação |
-|-------|----------------|
-| Antes de publicar | Persistir `orders.event_id`; se já existir, não republicar |
-| Chave de negócio | `orderId` + `eventId` inbound no payment |
+**Demo:** a shared volume is acceptable for learning; in production use Postgres/Redis for many replicas.
 
 ---
 
-## 6. Producer (publicação Kafka)
+## 5. Idempotency (order-service)
 
-| Regra | Implementação |
+| Rule | Implementation |
 |-------|----------------|
-| Tópico | `resolveKafkaTopic(eventType)` |
+| Before publishing | Persist `orders.event_id`; if it already exists, do not republish |
+| Business key | `orderId` + inbound `eventId` on payment |
+
+---
+
+## 6. Producer (Kafka publishing)
+
+| Rule | Implementation |
+|-------|----------------|
+| Topic | `resolveKafkaTopic(eventType)` |
 | Key | `resolvePartitionKey(envelope)` → `orderId` |
-| Retry app-level | `publishWithProducerRetry()` |
-| Retry transporte | `producer.retry` em `getKafkaClientConfig()` |
-| Publish confiável | **`emitKafkaEvent()`** — `lastValueFrom(emit().pipe(defaultIfEmpty))`; **não** usar `firstValueFrom(emit())` |
-| Client producer | **`producerOnlyMode: true`** — evita consumer extra no `ClientKafka` |
-| Falha após retries | order-service marca pedido `failed`; HTTP **500** |
+| App-level retry | `publishWithProducerRetry()` |
+| Transport retry | `producer.retry` in `getKafkaClientConfig()` |
+| Reliable publish | **`emitKafkaEvent()`** — `lastValueFrom(emit().pipe(defaultIfEmpty))`; **do not** use `firstValueFrom(emit())` |
+| Producer client | **`producerOnlyMode: true`** — avoids an extra consumer on `ClientKafka` |
+| Failure after retries | order-service marks order `failed`; HTTP **500** |
 
-### 6.1 Variáveis de retry — valores vazios
+### 6.1 Retry variables — empty values
 
-| Regra | Detalhe |
+| Rule | Detail |
 |-------|---------|
-| **Proibido** | `KAFKA_RETRY_MAX_ATTEMPTS=` (vazio) no `.env` |
-| Efeito de valor inválido | `maxAttempts: NaN` → publish falha com erro `undefined` |
-| Correção | Usar números (`3`, `1000`, …) ou **omitir** a variável |
+| **Forbidden** | `KAFKA_RETRY_MAX_ATTEMPTS=` (empty) in `.env` |
+| Effect of invalid value | `maxAttempts: NaN` → publish fails with error `undefined` |
+| Fix | Use numbers (`3`, `1000`, …) or **omit** the variable |
 
-Variáveis: `KAFKA_PRODUCER_RETRY_*` com fallback em `KAFKA_RETRY_*` (ver [RETRY_DLQ.md](./RETRY_DLQ.md)).
+Variables: `KAFKA_PRODUCER_RETRY_*` with fallback to `KAFKA_RETRY_*` (see [RETRY_DLQ.md](./RETRY_DLQ.md)).
 
 ---
 
-## 7. Consumer (retry e DLQ)
+## 7. Consumer (retry and DLQ)
 
-| Regra | Valor padrão |
+| Rule | Default |
 |-------|----------------|
-| Tentativas máximas | **3** |
-| Backoff | exponencial: `1s → 2s → DLQ` |
-| Após esgotar | publicar em `{topic}.dlq` |
+| Max attempts | **3** |
+| Backoff | exponential: `1s → 2s → DLQ` |
+| After exhaustion | publish to `{topic}.dlq` |
 
-Env: `KAFKA_CONSUMER_RETRY_*` ou `KAFKA_RETRY_*`.
+Env: `KAFKA_CONSUMER_RETRY_*` or `KAFKA_RETRY_*`.
 
 **Logs:** `[KAFKA CONSUMER RETRY]`, `[KAFKA RETRY]`, `[KAFKA DLQ]`, `[EVENT RECEIVED]`, `[IDEMPOTENCY SKIP]`.
 
-Handlers inválidos (envelope inválido): ack sem retry (evita poison loop).
+Invalid handlers (invalid envelope): ack without retry (avoids poison loop).
 
 ---
 
-## 8. Payment-service — simulação
+## 8. Payment-service — simulation
 
-| Variável | Padrão | Efeito |
+| Variable | Default | Effect |
 |----------|--------|--------|
 | `PAYMENT_FAILURE_RATE` | `0.2` | ~80% `payment.processed`, ~20% `payment.failed` |
-| `PAYMENT_FORCE_FAILURE` | — | força falha |
-| Regras de negócio | `payment-rules.ts` | validação antes do gateway simulado |
+| `PAYMENT_FORCE_FAILURE` | — | forces failure |
+| Business rules | `payment-rules.ts` | validation before simulated gateway |
 
-Tipos de falha simulados: `timeout`, `gateway_unavailable`, `card_declined`, `connection_reset`.
+Simulated failure types: `timeout`, `gateway_unavailable`, `card_declined`, `connection_reset`.
 
-Teste determinístico de sucesso: `PAYMENT_FAILURE_RATE=0 npm run verify:payment-flow`.
+Deterministic success test: `PAYMENT_FAILURE_RATE=0 npm run verify:payment-flow`.
 
 ---
 
-## 9. Bootstrap da aplicação (HTTP + Kafka)
+## 9. Application bootstrap (HTTP + Kafka)
 
-Todo serviço de domínio segue o padrão híbrido em `main.ts`:
+Every domain service follows the hybrid pattern in `main.ts`:
 
 1. `NestFactory.create(AppModule)`
 2. `app.connectMicroservice({ transport: KAFKA, options: getKafkaConsumerConfig(service) })`
-3. `await app.startAllMicroservices()` — **antes** de `app.listen()`
+3. `await app.startAllMicroservices()` — **before** `app.listen()`
 4. Log: `formatKafkaConsumerBootstrap(consumerInfo)`
 
-**Regra Docker:** após alterar código, **rebuild da imagem** é obrigatório. Imagem antiga do payment-service sem `connectMicroservice` só sobe HTTP e **não consome** Kafka.
+**Docker rule:** after changing code, **image rebuild** is mandatory. An old payment-service image without `connectMicroservice` only starts HTTP and **does not consume** Kafka.
 
 ```bash
 npm run docker:rebuild-services
@@ -225,21 +225,21 @@ npm run docker:rebuild-services
 
 ---
 
-## 10. Docker e rede
+## 10. Docker and network
 
-| Contexto | `KAFKA_BOOTSTRAP_SERVERS` |
+| Context | `KAFKA_BOOTSTRAP_SERVERS` |
 |----------|---------------------------|
-| Apps no host | `localhost:9092` |
-| Apps na rede `eventflow-network` | `kafka:29092` |
+| Apps on host | `localhost:9092` |
+| Apps on `eventflow-network` | `kafka:29092` |
 
-| Serviço infra | Porta host |
+| Infra service | Host port |
 |---------------|------------|
 | Kafka | 9092 |
 | Kafka UI | 8080 |
 | order-service | 3001 |
 | payment-service-1 | 3002 |
 
-`kafka-init`: cria tópicos com `--config retention.ms=…` e `--config cleanup.policy=…` (formato separado, não CSV em um único `--config`).
+`kafka-init`: creates topics with `--config retention.ms=…` and `--config cleanup.policy=…` (separate flags, not CSV in a single `--config`).
 
 ---
 
@@ -257,44 +257,44 @@ curl -sS -X POST http://localhost:3001/orders \
   }'
 ```
 
-| Campo | Regra |
+| Field | Rule |
 |-------|--------|
-| `customerId` | string não vazia |
-| `items` | array ≥ 1 item |
-| `items[].quantity` | inteiro ≥ 1 |
-| `items[].unitPrice` | número positivo, até 2 casas decimais |
-| `currency` | opcional: `BRL`, `USD`, `EUR` (padrão `BRL`) |
+| `customerId` | non-empty string |
+| `items` | array with ≥ 1 item |
+| `items[].quantity` | integer ≥ 1 |
+| `items[].unitPrice` | positive number, up to 2 decimal places |
+| `currency` | optional: `BRL`, `USD`, `EUR` (default `BRL`) |
 
-**Resposta:** `orderId`, `status`, `totalAmount`, `currency`, `eventId`, `correlationId`.
+**Response:** `orderId`, `status`, `totalAmount`, `currency`, `eventId`, `correlationId`.
 
 ---
 
-## 12. Scripts npm de validação
+## 12. npm validation scripts
 
-| Script | Função |
+| Script | Purpose |
 |--------|--------|
-| `npm run verify:order-kafka` | POST /orders + mensagem em `order.events` |
-| `npm run verify:payment-flow` | Fluxo order → payment → Kafka |
-| `npm run verify:payment-scale` | ≥ 2 members no consumer group |
-| `npm run verify:kafka-partitions` | Partitions, key, distribuição, balanceamento |
-| `npm run kafka:partitions` | Altera `order.events` / `payment.events` para 3 partitions |
-| `npm run docker:payment-instances` | Sobe réplicas payment (named ou scale) |
+| `npm run verify:order-kafka` | POST /orders + message on `order.events` |
+| `npm run verify:payment-flow` | Flow order → payment → Kafka |
+| `npm run verify:payment-scale` | ≥ 2 members in consumer group |
+| `npm run verify:kafka-partitions` | Partitions, key, distribution, balancing |
+| `npm run kafka:partitions` | Alters `order.events` / `payment.events` to 3 partitions |
+| `npm run docker:payment-instances` | Starts payment replicas (named or scale) |
 | `npm run docker:rebuild-services` | Rebuild + recreate containers |
 
 ---
 
 ## 13. Troubleshooting
 
-| Sintoma | Causa provável | Ação |
+| Symptom | Likely cause | Action |
 |---------|----------------|------|
-| Payment sem logs de consumo | Imagem Docker antiga (sem Kafka consumer) | `npm run docker:rebuild-services` |
-| Payment sem `[EVENT RECEIVED]` | Logs na instância errada ou 1 partition | `kafka-consumer-groups --describe`; `npm run kafka:partitions` + restart |
-| `Published` no order mas payment não reage | Mensagens em `order.created` (legado) | Pedidos novos após rebuild; tópico correto é `order.events` |
-| `Kafka publish failed … undefined` | `KAFKA_RETRY_*` vazio → NaN | Corrigir `.env` ou omitir variáveis |
-| `order.events` com 1 partition | Tópico auto-criado antes do init | `npm run kafka:partitions` |
-| Dois consumers duplicam evento | `groupId` diferente por instância | Mesmo `KAFKA_CONSUMER_GROUP_PAYMENT_SERVICE` |
+| Payment with no consumption logs | Old Docker image (no Kafka consumer) | `npm run docker:rebuild-services` |
+| Payment without `[EVENT RECEIVED]` | Logs on wrong instance or 1 partition | `kafka-consumer-groups --describe`; `npm run kafka:partitions` + restart |
+| `Published` on order but payment does not react | Messages on `order.created` (legacy) | New orders after rebuild; correct topic is `order.events` |
+| `Kafka publish failed … undefined` | Empty `KAFKA_RETRY_*` → NaN | Fix `.env` or omit variables |
+| `order.events` with 1 partition | Topic auto-created before init | `npm run kafka:partitions` |
+| Two consumers duplicate events | Different `groupId` per instance | Same `KAFKA_CONSUMER_GROUP_PAYMENT_SERVICE` |
 
-**Startup saudável (payment):**
+**Healthy startup (payment):**
 
 ```text
 Kafka consumer: service=payment-service ... groupId=eventflow.payment-service
@@ -303,9 +303,9 @@ Kafka consumer microservice started
 
 ---
 
-## 14. Logs estruturados (grep)
+## 14. Structured logs (grep)
 
-| Serviço | Tags |
+| Service | Tags |
 |---------|------|
 | order | `Order created`, `Publishing order.created`, `Kafka publish succeeded` |
 | payment | `[EVENT RECEIVED]`, `[PAYMENT STARTED]`, `[PAYMENT SUCCESS]`, `[PAYMENT FAILED]`, `[IDEMPOTENCY SKIP]` |

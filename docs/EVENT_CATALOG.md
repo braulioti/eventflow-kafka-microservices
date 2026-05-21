@@ -22,7 +22,7 @@ Happy path: `order.created → payment.processed → stock.reserved → notifica
 |---------|----------|
 | **Consistency** | Shared TypeScript contracts in `@eventflow/shared` |
 | **Traceability** | `EventEnvelope` with `eventId`, `correlationId`, `causationId` |
-| **Scalability** | Aggregate topics (`order.events`, `payment.events`); 3 partitions; key = `orderId`; ver [RULES.md](./RULES.md) |
+| **Scalability** | Aggregate topics (`order.events`, `payment.events`); 3 partitions; key = `orderId`; see [RULES.md](./RULES.md) |
 | **Retention** | 7 days default (`KAFKA_TOPIC_RETENTION_MS`) |
 | **Failure handling** | DLQ topic per event: `{event-type}.dlq` |
 | **Evolution** | `version` field on every envelope (current: `1.0`) |
@@ -74,11 +74,11 @@ Definitions live in `shared/src/events/`. Import from `@eventflow/shared` in ser
 
 - Transport: `@nestjs/microservices` + `kafkajs`
 - Producer: `EventPublisher` + `emitKafkaEvent()` + `publishWithProducerRetry()`
-- Consumer: `@EventPattern` (ex.: `order.events`, not legacy topic name alone)
+- Consumer: `@EventPattern` (e.g. `order.events`, not legacy topic name alone)
 - Config: `getKafkaConsumerConfig(serviceName)` / `getKafkaClientConfig(clientId)`
 - Env: `KAFKA_BOOTSTRAP_SERVERS` (default `localhost:9092`)
-- Consumer group no broker: `eventflow.<service>-server` (Nest suffix)
+- Consumer group on broker: `eventflow.<service>-server` (Nest suffix)
 
 ## Related
 
-- [RULES.md](./RULES.md) — regras completas
+- [RULES.md](./RULES.md) — complete system rules
