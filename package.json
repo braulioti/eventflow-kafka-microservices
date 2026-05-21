@@ -18,6 +18,7 @@
     "start:notification": "npm run start:dev -w notification-service",
     "start:dlq": "npm run start:dev -w dlq-service",
     "test": "npm run test --workspaces --if-present",
-    "verify:order-kafka": "node scripts/verify-order-kafka-flow.mjs"
+    "verify:order-kafka": "node scripts/verify-order-kafka-flow.mjs",
+    "verify:payment-flow": "node scripts/verify-payment-full-flow.mjs"
   }
 }

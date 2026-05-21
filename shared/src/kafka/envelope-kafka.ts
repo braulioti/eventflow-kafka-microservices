@@ -1,5 +1,12 @@
+/**
+ * Wire-format helpers: envelope ↔ Kafka headers and payload extraction.
+ *
+ * Bridges domain {@link EventEnvelope} with kafkajs record shape. Handles Nest's optional
+ * `{ data: envelope }` wrapper so consumers stay compatible across transport versions.
+ */
 import type { EventEnvelope } from '../events/envelope';
 import { KafkaHeader } from './kafka-headers';
+import { deserializeKafkaPayload } from './deserialize-kafka-payload';
 import { getPartitionKeyFromPayload } from './partition-key';
 
 /** Maps envelope metadata to Kafka record headers for cross-service tracing. */
@@ -26,12 +33,16 @@ export function envelopeToKafkaHeaders(
  * Supports both raw envelope JSON and Nest-wrapped `{ data: envelope }` shapes.
  */
 export function extractEnvelope<T>(payload: unknown): EventEnvelope<T> {
-  if (payload && typeof payload === 'object' && 'eventId' in payload) {
-    return payload as EventEnvelope<T>;
+  const normalized = deserializeKafkaPayload(payload);
+
+  // Direct envelope JSON (preferred on-the-wire shape).
+  if (normalized && typeof normalized === 'object' && 'eventId' in normalized) {
+    return normalized as EventEnvelope<T>;
   }
 
-  if (payload && typeof payload === 'object' && 'data' in payload) {
-    const nested = (payload as { data: unknown }).data;
+  // Nest microservice wrapper: { data: EventEnvelope }.
+  if (normalized && typeof normalized === 'object' && 'data' in normalized) {
+    const nested = (normalized as { data: unknown }).data;
     if (nested && typeof nested === 'object' && 'eventId' in nested) {
       return nested as EventEnvelope<T>;
     }

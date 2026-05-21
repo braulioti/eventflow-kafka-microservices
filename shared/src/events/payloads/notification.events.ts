@@ -1,4 +1,11 @@
-/** Delivery channel for outbound messages. */
+/**
+ * Notification bounded context event payloads.
+ *
+ * Models dispatch requests, delivery confirmations, and terminal failures. `notification.sent`
+ * is consumed by order-service as the core-flow completion signal.
+ */
+
+/** Supported outbound notification channels in the reference implementation. */
 export type NotificationChannel = 'email' | 'sms' | 'push';
 
 /** Request to dispatch a template to a recipient. */

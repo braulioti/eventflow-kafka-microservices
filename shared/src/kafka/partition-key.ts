@@ -1,13 +1,21 @@
 /**
- * Kafka partition key resolution.
+ * Kafka partition key resolution for EventFlow publishers.
  *
- * All domain topics use `orderId` as the message key so events for one order
- * stay ordered within a partition (see {@link PARTITION_STRATEGY}).
+ * Every catalog entry uses `orderId` as the message key ({@link PARTITION_KEY_FIELD}).
+ * Hashing by this key keeps all saga events for one order in a single partition, preserving
+ * per-order ordering while allowing different orders to process in parallel across partitions.
+ *
+ * Producers call {@link resolvePartitionKey} after building an envelope; consumers rely on
+ * the same field for correlation checks in domain parsers.
  */
 import type { EventEnvelope } from '../events/envelope';
 import { PARTITION_KEY_FIELD } from './topic-config';
 
-/** Reads {@link PARTITION_KEY_FIELD} from a payload object (typically `orderId`). */
+/**
+ * Extracts the Kafka record key from a payload object.
+ * @param payload - Domain payload or arbitrary object with `orderId`
+ * @throws Error when payload is not an object or `orderId` is missing/empty
+ */
 export function getPartitionKeyFromPayload(payload: unknown): string {
   if (!payload || typeof payload !== 'object') {
     throw new Error(
@@ -26,7 +34,11 @@ export function getPartitionKeyFromPayload(payload: unknown): string {
   return key;
 }
 
-/** Resolves the Kafka message key from a standard event envelope */
+/**
+ * Resolves the Kafka message key from a standard {@link EventEnvelope}.
+ * Equivalent to `getPartitionKeyFromPayload(envelope.payload)`.
+ * @param envelope - Published or consumed envelope with `payload.orderId`
+ */
 export function resolvePartitionKey(envelope: EventEnvelope<unknown>): string {
   return getPartitionKeyFromPayload(envelope.payload);
 }

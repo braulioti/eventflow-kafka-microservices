@@ -1,7 +1,9 @@
 /**
- * Event envelope field specification (EventFlow standard).
+ * Human- and machine-readable specification of envelope fields.
  *
- * Every message published to Kafka MUST use this envelope shape.
+ * Documents required formats for docs generators, onboarding, and {@link ENVELOPE_FIELD_SPEC}
+ * metadata. Runtime validation lives in {@link validateEventEnvelope}; this module is the
+ * contract reference aligned with `docs/EVENT_MODELING.md`.
  */
 
 /** Unique identifier for this message instance (UUID v4). Used for idempotency and deduplication. */
@@ -31,6 +33,10 @@ export type EventTimestamp = string;
  * | payload        | yes      | Domain-specific data                             |
  */
 
+/**
+ * Structured field metadata for tooling and documentation (not used at runtime).
+ * Keys mirror {@link EventEnvelope} property names.
+ */
 export const ENVELOPE_FIELD_SPEC = {
   eventId: {
     required: true,

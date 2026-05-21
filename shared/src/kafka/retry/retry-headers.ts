@@ -1,6 +1,13 @@
+/**
+ * Kafka headers for consumer-side retry scheduling and observability.
+ *
+ * Written by {@link buildRetryHeaders} on republish; read by {@link KafkaRetryExecutor}
+ * via {@link getRetryCount} and {@link getRetryAt}. Kept separate from {@link KafkaHeader}
+ * trace fields but merged in {@link mergeEnvelopeAndRetryHeaders}.
+ */
 import { KafkaHeader } from '../kafka-headers';
 
-/** Headers added when republishing a failed message for another attempt. */
+/** `x-retry-*` and `x-original-topic` header names on republished messages. */
 export const RetryHeader = {
   RETRY_COUNT: 'x-retry-count',
   RETRY_MAX: 'x-retry-max',

@@ -1,6 +1,15 @@
+/**
+ * Order bounded context event payloads.
+ *
+ * `order.created` is the saga entry point published to `order.events`; `order.cancelled`
+ * fans out compensation signals to payment, stock, and notification services.
+ */
 import type { CurrencyCode, OrderItem } from './common';
 
-/** Emitted when a customer places an order; starts the happy-path saga. */
+/**
+ * Payload for {@link EventType.ORDER_CREATED} — triggers payment-service consumption.
+ * `orderId` doubles as Kafka partition key and envelope `correlationId`.
+ */
 export interface OrderCreatedPayload {
   /** Partition key and correlationId for downstream events */
   orderId: string;

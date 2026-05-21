@@ -1,6 +1,14 @@
+/**
+ * Stock / inventory bounded context event payloads.
+ *
+ * Emitted after successful payment; `stock.reserved` advances the saga to notification.
+ * Release and failure events support cancellation and compensation paths.
+ */
 import type { OrderItem } from './common';
 
-/** Inventory held for the order; triggers customer notification. */
+/**
+ * Payload for {@link EventType.STOCK_RESERVED} — confirms inventory hold for the order.
+ */
 export interface StockReservedPayload {
   reservationId: string;
   orderId: string;

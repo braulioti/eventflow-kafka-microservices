@@ -34,8 +34,8 @@ Happy path: `order.created → payment.processed → stock.reserved → notifica
 | `order.created` | `order.events` | order-service | payment-service |
 | `order.cancelled` | `order.cancelled` | order-service | payment, stock, notification |
 | `payment.requested` | `payment.requested` | payment-service | payment-service |
-| `payment.processed` | `payment.processed` | payment-service | stock-service |
-| `payment.failed` | `payment.failed` | payment-service | order, notification |
+| `payment.processed` | `payment.events` | payment-service | stock-service |
+| `payment.failed` | `payment.events` | payment-service | order, notification |
 | `stock.reserved` | `stock.reserved` | stock-service | notification-service |
 | `stock.released` | `stock.released` | stock-service | order-service |
 | `stock.failed` | `stock.failed` | stock-service | order, notification |

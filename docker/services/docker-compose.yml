@@ -28,6 +28,8 @@ services:
     environment:
       PORT: 3002
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      PAYMENT_DATABASE_PATH: /tmp/payments.sqlite
+      PAYMENT_FAILURE_RATE: ${PAYMENT_FAILURE_RATE:-0.2}
     networks:
       - eventflow
 

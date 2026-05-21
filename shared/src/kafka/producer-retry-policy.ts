@@ -1,3 +1,10 @@
+/**
+ * Application-level producer retry wrapper (above KafkaJS transport retries).
+ *
+ * {@link publishWithProducerRetry} sleeps with exponential backoff between publish attempts
+ * when the domain publisher throws. Distinct from consumer {@link KafkaRetryExecutor} which
+ * republishes to the same topic with headers.
+ */
 import {
   type RetryPolicyConfig,
   calculateBackoffMs,
@@ -5,7 +12,10 @@ import {
   sleep,
 } from './retry/retry-policy';
 
-/** Producer publish retry policy (env: `KAFKA_PRODUCER_RETRY_*`, falls back to `KAFKA_RETRY_*`). */
+/**
+ * Resolves retry limits for outbound publish operations.
+ * Env: `KAFKA_PRODUCER_RETRY_*`, falling back to `KAFKA_RETRY_*`.
+ */
 export function resolveProducerRetryPolicy(
   overrides?: Partial<RetryPolicyConfig>,
 ): RetryPolicyConfig {

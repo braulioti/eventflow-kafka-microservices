@@ -1,14 +1,20 @@
+/**
+ * NestJS Kafka microservice and client factory configuration.
+ *
+ * Builds kafkajs `client` / `consumer` / `producer` blocks from env vars and shared retry
+ * policies. Each service calls {@link getKafkaConsumerConfig} or {@link getKafkaClientConfig}
+ * in `main.ts` / `ClientsModule.register`.
+ */
 import type { ServiceName } from '../events/event-catalog';
-import { CONSUMER_GROUP_BY_SERVICE } from './consumer-groups';
+import {
+  getKafkaConsumerConnectionInfo,
+  resolveConsumerClientId,
+  resolveConsumerGroup,
+} from './consumer-config';
+import { resolveKafkaBrokers } from './kafka-brokers';
 import { resolveProducerRetryPolicy } from './producer-retry-policy';
 
-/** Parses `KAFKA_BOOTSTRAP_SERVERS` (comma-separated) for kafkajs / Nest Kafka. */
-export function resolveKafkaBrokers(): string[] {
-  return (process.env.KAFKA_BOOTSTRAP_SERVERS ?? 'localhost:9092')
-    .split(',')
-    .map((broker) => broker.trim())
-    .filter(Boolean);
-}
+export { resolveKafkaBrokers } from './kafka-brokers';
 
 /**
  * Producer-side KafkaJS options shared by Nest `ClientsModule` registrations.
@@ -36,18 +42,41 @@ export function getKafkaClientConfig(clientId: string) {
 }
 
 /**
- * Consumer microservice options: stable group id per service and optional replay.
- * Set `KAFKA_FROM_BEGINNING=true` only when reprocessing history intentionally.
+ * Nest Kafka microservice options: broker connection + consumer group per service.
+ *
+ * - **Brokers:** `KAFKA_BOOTSTRAP_SERVERS` (comma-separated)
+ * - **Group:** `resolveConsumerGroup()` — default `eventflow.<service>`
+ * - **Replay:** `KAFKA_FROM_BEGINNING=true` only when reprocessing history
  */
 export function getKafkaConsumerConfig(service: ServiceName) {
+  const connection = getKafkaConsumerConnectionInfo(service);
+  const producerRetry = resolveProducerRetryPolicy();
+
   return {
-    ...getKafkaClientConfig(service),
+    client: {
+      clientId: connection.clientId,
+      brokers: connection.brokers,
+      connectionTimeout: Number(process.env.KAFKA_CONNECTION_TIMEOUT_MS ?? 10000),
+      retry: {
+        retries: Math.max(producerRetry.maxAttempts, 3),
+        initialRetryTime: producerRetry.baseDelayMs,
+        maxRetryTime: producerRetry.maxDelayMs,
+        multiplier: producerRetry.backoffMultiplier,
+      },
+    },
     consumer: {
-      groupId: CONSUMER_GROUP_BY_SERVICE[service],
+      groupId: connection.groupId,
+      sessionTimeout: connection.sessionTimeoutMs,
+      heartbeatInterval: connection.heartbeatIntervalMs,
       allowAutoTopicCreation: true,
     },
     subscribe: {
-      fromBeginning: process.env.KAFKA_FROM_BEGINNING === 'true',
+      fromBeginning: connection.fromBeginning,
+    },
+    run: {
+      autoCommit: true,
     },
   };
 }
+
+export { getKafkaConsumerConnectionInfo, resolveConsumerGroup } from './consumer-config';

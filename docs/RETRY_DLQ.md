@@ -2,12 +2,14 @@
 
 ## Policy (default)
 
-| Setting | Default | Env variable |
-|---------|---------|--------------|
-| Max attempts | 3 | `KAFKA_RETRY_MAX_ATTEMPTS` |
-| Base delay | 1000 ms | `KAFKA_RETRY_BASE_DELAY_MS` |
-| Max delay | 30000 ms | `KAFKA_RETRY_MAX_DELAY_MS` |
-| Backoff multiplier | 2 (exponential) | `KAFKA_RETRY_BACKOFF_MULTIPLIER` |
+| Setting | Default | Env variable (consumer) |
+|---------|---------|-------------------------|
+| Max attempts | 3 | `KAFKA_CONSUMER_RETRY_MAX_ATTEMPTS` or `KAFKA_RETRY_MAX_ATTEMPTS` |
+| Base delay | 1000 ms | `KAFKA_CONSUMER_RETRY_BASE_DELAY_MS` or `KAFKA_RETRY_BASE_DELAY_MS` |
+| Max delay | 30000 ms | `KAFKA_CONSUMER_RETRY_MAX_DELAY_MS` or `KAFKA_RETRY_MAX_DELAY_MS` |
+| Backoff multiplier | 2 (exponential) | `KAFKA_CONSUMER_RETRY_BACKOFF_MULTIPLIER` or `KAFKA_RETRY_BACKOFF_MULTIPLIER` |
+
+Consumer policy resolver: `resolveConsumerRetryPolicy()` in `shared/src/kafka/retry/retry-policy.ts`.
 
 Backoff formula: `min(baseDelay × multiplier^(attempt-1), maxDelay)`
 

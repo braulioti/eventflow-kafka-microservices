@@ -19,7 +19,9 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "test:integration": "jest --config ./test/jest-integration.json",
+    "verify:flow": "node ../../scripts/verify-payment-full-flow.mjs"
   },
   "dependencies": {
     "@eventflow/shared": "*",
@@ -27,7 +29,10 @@
     "@nestjs/core": "^11.0.1",
     "@nestjs/microservices": "^11.1.21",
     "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/typeorm": "^11.0.1",
+    "better-sqlite3": "^12.10.0",
     "kafkajs": "^2.2.4",
+    "typeorm": "^0.3.20",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
   },

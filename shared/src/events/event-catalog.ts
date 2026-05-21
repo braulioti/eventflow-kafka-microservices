@@ -1,7 +1,16 @@
-import { OrderKafkaTopic } from './domain-topics';
+/**
+ * Authoritative event catalog for EventFlow — ownership, topics, and consumer matrix.
+ *
+ * Single source of truth mirrored in `docs/EVENT_CATALOG.md`. Each {@link EventCatalogEntry}
+ * records who produces/consumes an event, which Kafka topic and DLQ apply, and the partition
+ * key field. Services use {@link getEventsByProducer} / {@link getEventsByConsumer} at
+ * startup to validate subscriptions and for operational discovery.
+ */
+import { OrderKafkaTopic, PaymentKafkaTopic } from './domain-topics';
 import { EventType, type EventTypeValue } from './event-types';
 import { KafkaTopic, toDlqTopic } from './kafka-topics';
 
+/** Microservice identifiers that participate in the EventFlow Kafka mesh. */
 export type ServiceName =
   | 'order-service'
   | 'payment-service'
@@ -9,19 +18,27 @@ export type ServiceName =
   | 'notification-service'
   | 'dlq-service';
 
+/** One row in the system event catalog — routing and ownership for a single event type. */
 export interface EventCatalogEntry {
+  /** Canonical envelope `eventType` (not always equal to `topic`). */
   eventType: EventTypeValue;
+  /** Physical Kafka topic name (may be aggregate stream like `order.events`). */
   topic: string;
+  /** Dead-letter topic where exhausted retries land (`{topic}.dlq`). */
   dlqTopic: string;
+  /** Sole publisher for this event in the reference architecture. */
   producer: ServiceName;
+  /** Services that subscribe via their consumer group (may share a topic). */
   consumers: ServiceName[];
-  /** Kafka message key — keeps related events in the same partition */
+  /** Payload field used as Kafka message key — always `orderId` in EventFlow. */
   partitionKey: string;
+  /** Human-readable saga step description for docs and onboarding. */
   description: string;
 }
 
 /**
- * System event catalog: ownership, routing, and flow documentation.
+ * Full catalog of domain events in the reference order-processing saga.
+ * Order matters for readability only; lookups use {@link getCatalogEntry}.
  */
 export const EVENT_CATALOG: readonly EventCatalogEntry[] = [
   {
@@ -54,21 +71,21 @@ export const EVENT_CATALOG: readonly EventCatalogEntry[] = [
   },
   {
     eventType: EventType.PAYMENT_PROCESSED,
-    topic: KafkaTopic.PAYMENT_PROCESSED,
-    dlqTopic: toDlqTopic(KafkaTopic.PAYMENT_PROCESSED),
+    topic: PaymentKafkaTopic.PAYMENT_EVENTS,
+    dlqTopic: toDlqTopic(PaymentKafkaTopic.PAYMENT_EVENTS),
     producer: 'payment-service',
     consumers: ['stock-service'],
     partitionKey: 'orderId',
-    description: 'Payment completed successfully.',
+    description: 'Payment completed successfully (published to payment.events).',
   },
   {
     eventType: EventType.PAYMENT_FAILED,
-    topic: KafkaTopic.PAYMENT_FAILED,
-    dlqTopic: toDlqTopic(KafkaTopic.PAYMENT_FAILED),
+    topic: PaymentKafkaTopic.PAYMENT_EVENTS,
+    dlqTopic: toDlqTopic(PaymentKafkaTopic.PAYMENT_EVENTS),
     producer: 'payment-service',
     consumers: ['order-service', 'notification-service'],
     partitionKey: 'orderId',
-    description: 'Payment could not be completed.',
+    description: 'Payment could not be completed (published to payment.events).',
   },
   {
     eventType: EventType.STOCK_RESERVED,

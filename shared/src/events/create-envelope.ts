@@ -1,3 +1,9 @@
+/**
+ * Factory for building valid {@link EventEnvelope} instances at publish time.
+ *
+ * Centralizes default generation of `eventId` and `timestamp` so every producer
+ * (order-service REST handler, payment simulator, retry republish) emits consistent metadata.
+ */
 import { randomUUID } from 'crypto';
 import {
   EVENT_SCHEMA_VERSION,

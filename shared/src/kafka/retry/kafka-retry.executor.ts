@@ -20,11 +20,20 @@ import {
 import {
   calculateBackoffMs,
   type RetryPolicyConfig,
-  resolveRetryPolicy,
+  resolveConsumerRetryPolicy,
   shouldRetry,
   shouldSendToDlq,
   sleep,
 } from './retry-policy';
+
+/** Optional policy override and structured log sinks for retry/DLQ lines. */
+export interface KafkaRetryExecutorOptions {
+  policy?: RetryPolicyConfig;
+  /** Structured consumer retry logs (grep `[KAFKA RETRY]` / `[KAFKA DLQ]`). */
+  log?: (message: string) => void;
+  logWarn?: (message: string) => void;
+  logError?: (message: string) => void;
+}
 
 /** Result of a single {@link KafkaRetryExecutor.execute} invocation. */
 export type RetryOutcome = 'success' | 'retry' | 'dlq';
@@ -41,15 +50,35 @@ export interface ExecuteWithRetryParams {
 /** Shared retry engine; each Nest service wraps this in {@link KafkaRetryRunner}. */
 export class KafkaRetryExecutor {
   private readonly policy: RetryPolicyConfig;
+  private readonly log: (message: string) => void;
+  private readonly logWarn: (message: string) => void;
+  private readonly logError: (message: string) => void;
 
+  /**
+   * @param transport - Service-specific publisher implementing {@link KafkaEventTransport}
+   * @param service - Consumer service name (DLQ envelope `failedBy` and log lines)
+   * @param options - Retry policy and logging hooks
+   */
   constructor(
     private readonly transport: KafkaEventTransport,
     private readonly service: ServiceName,
-    policy?: RetryPolicyConfig,
+    options?: KafkaRetryExecutorOptions,
   ) {
-    this.policy = policy ?? resolveRetryPolicy();
+    this.policy = options?.policy ?? resolveConsumerRetryPolicy();
+    this.log = options?.log ?? (() => undefined);
+    this.logWarn = options?.logWarn ?? this.log;
+    this.logError = options?.logError ?? this.logWarn;
   }
 
+  /** Returns a shallow copy of the effective retry policy (tests, startup logs). */
+  getPolicy(): RetryPolicyConfig {
+    return { ...this.policy };
+  }
+
+  /**
+   * Runs `handler` with retry/DLQ semantics on failure.
+   * @returns `'success'` | `'retry'` (republished) | `'dlq'` (sent to companion topic)
+   */
   async execute(params: ExecuteWithRetryParams): Promise<RetryOutcome> {
     const headers = params.headers ?? {};
     const retryAt = getRetryAt(headers);
@@ -66,12 +95,37 @@ export class KafkaRetryExecutor {
       const currentAttempt = getRetryCount(headers);
       const nextAttempt = currentAttempt + 1;
 
+      const kafkaTopic = resolveKafkaTopic(params.eventType);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+
+      // Attempt budget exhausted — wrap original envelope and publish to `.dlq`.
       if (shouldSendToDlq(nextAttempt, this.policy)) {
+        this.logError(`
+[KAFKA DLQ]
+service=${this.service}
+topic=${kafkaTopic}
+eventId=${params.envelope.eventId}
+eventType=${params.envelope.eventType}
+attempt=${nextAttempt}/${this.policy.maxAttempts}
+reason=${errorMessage}
+`.trim());
         await this.sendToDlq(params.eventType, params.envelope, error, nextAttempt);
         return 'dlq';
       }
 
       if (shouldRetry(nextAttempt, this.policy)) {
+        const backoffMs = calculateBackoffMs(nextAttempt, this.policy);
+        this.logWarn(`
+[KAFKA RETRY]
+service=${this.service}
+topic=${kafkaTopic}
+eventId=${params.envelope.eventId}
+eventType=${params.envelope.eventType}
+attempt=${nextAttempt}/${this.policy.maxAttempts}
+backoffMs=${backoffMs}
+reason=${errorMessage}
+`.trim());
         await this.scheduleRetry(
           params.eventType,
           params.envelope,
@@ -86,6 +140,7 @@ export class KafkaRetryExecutor {
     }
   }
 
+  /** Sleeps for backoff, then republishes same envelope with incremented retry headers. */
   private async scheduleRetry(
     eventType: EventTypeValue,
     envelope: EventEnvelope<unknown>,
@@ -110,6 +165,7 @@ export class KafkaRetryExecutor {
     await this.transport.publish(eventType, envelope, { headers: retryHeaders });
   }
 
+  /** Builds {@link createFailureEnvelope} and calls `transport.publishToDlq`. */
   private async sendToDlq(
     eventType: EventTypeValue,
     envelope: EventEnvelope<unknown>,

@@ -1,6 +1,14 @@
+/**
+ * Payment bounded context event payloads.
+ *
+ * Success/failure outcomes on `payment.events` drive stock reservation or order/notification
+ * compensation; `payment.requested` is an internal step on a dedicated topic.
+ */
 import type { CurrencyCode } from './common';
 
-/** Internal step: payment-service accepted work for an order. */
+/**
+ * Payload for {@link EventType.PAYMENT_REQUESTED} — payment-service self-consume / audit step.
+ */
 export interface PaymentRequestedPayload {
   paymentId: string;
   orderId: string;

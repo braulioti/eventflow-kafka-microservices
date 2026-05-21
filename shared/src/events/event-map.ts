@@ -1,6 +1,9 @@
 /**
- * Compile-time map from event type string to payload interface.
- * Use with {@link TypedEventEnvelope} for type-safe Kafka handlers and publishers.
+ * Compile-time association between {@link EventType} keys and payload interfaces.
+ *
+ * Enables {@link TypedEventEnvelope} and type-safe `publish`/`@EventPattern` handlers
+ * without manual generics at every call site. Runtime validation still required via
+ * {@link validateEventEnvelope} and domain-specific validators.
  */
 import { EventType } from './event-types';
 import type {
@@ -38,10 +41,16 @@ export interface EventPayloadMap {
   [EventType.NOTIFICATION_FAILED]: NotificationFailedPayload;
 }
 
-/** Payload type for a given event type key. */
+/**
+ * Resolves the payload interface for a specific event type literal.
+ * @typeParam T - Event type key from {@link EventType}
+ */
 export type EventPayload<T extends keyof EventPayloadMap> = EventPayloadMap[T];
 
-/** Envelope whose payload matches the event type. */
+/**
+ * Fully typed envelope: `payload` shape inferred from `eventType` key.
+ * @typeParam T - Event type key from {@link EventType}
+ */
 export type TypedEventEnvelope<T extends keyof EventPayloadMap> = import('./envelope').EventEnvelope<
   EventPayloadMap[T]
 >;

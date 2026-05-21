@@ -1,11 +1,36 @@
+/**
+ * @file order-events.consumer.ts
+ * @module order-service — Kafka inbound handlers
+ *
+ * Updates persisted `OrderStatus` in SQLite when downstream saga steps complete
+ * or fail. Does **not** publish new domain events — order-service is mostly a
+ * status projector after the initial `order.created`.
+ *
+ * ## Handled events
+ *
+ * | Pattern              | Event type           | New status   | Saga meaning              |
+ * |----------------------|----------------------|--------------|---------------------------|
+ * | `payment.events`     | `payment.failed`     | `failed`     | Compensation — pay failed |
+ * | `stock.released`     | `stock.released`     | `cancelled`  | Inventory rolled back     |
+ * | `stock.failed`       | `stock.failed`       | `failed`     | Reservation error       |
+ * | `notification.sent`  | `notification.sent`  | `completed`  | Happy path terminal       |
+ *
+ * Each handler uses `KafkaRetryRunner` for transient DB errors. Invalid
+ * `payment.events` payloads are acked without retry.
+ *
+ * @see OrdersService.updateOrderStatus
+ * @see KafkaRetryRunner
+ */
 import { Controller, Logger } from '@nestjs/common';
 import { Ctx, EventPattern, KafkaContext, Payload } from '@nestjs/microservices';
 import {
   EventType,
+  EventValidationError,
+  PaymentKafkaTopic,
   extractEnvelope,
   parseKafkaHeaders,
+  parsePaymentFailedMessage,
   type NotificationSentPayload,
-  type PaymentFailedPayload,
   type StockFailedPayload,
   type StockReleasedPayload,
 } from '@eventflow/shared';
@@ -13,6 +38,9 @@ import { OrderStatus } from '../orders/entities/order-status.enum';
 import { OrdersService } from '../orders/orders.service';
 import { KafkaRetryRunner } from './kafka-retry.runner';
 
+/**
+ * Kafka router updating order aggregate status from saga feedback events.
+ */
 @Controller()
 export class OrderEventsConsumer {
   private readonly logger = new Logger(OrderEventsConsumer.name);
@@ -22,13 +50,39 @@ export class OrderEventsConsumer {
     private readonly ordersService: OrdersService,
   ) {}
 
-  /** Compensation: payment could not complete for this order. */
-  @EventPattern(EventType.PAYMENT_FAILED)
-  async handlePaymentFailed(
+  /**
+   * Listens on `payment.events` — processes validated `payment.failed` only.
+   *
+   * Other payment event types are skipped by `parsePaymentFailedMessage`.
+   * Marks order `failed` so API/clients reflect compensation.
+   *
+   * @param payload - Raw Kafka message body
+   * @param context - Headers and metadata for retry counting
+   */
+  @EventPattern(PaymentKafkaTopic.PAYMENT_EVENTS)
+  async handlePaymentEvents(
     @Payload() payload: unknown,
     @Ctx() context: KafkaContext,
   ) {
-    const envelope = extractEnvelope<PaymentFailedPayload>(payload);
+    let parsed;
+
+    try {
+      parsed = parsePaymentFailedMessage(payload);
+    } catch (error) {
+      if (error instanceof EventValidationError) {
+        this.logger.error(
+          `Invalid message on ${PaymentKafkaTopic.PAYMENT_EVENTS}: ${error.message}`,
+        );
+        return { acknowledged: true, outcome: 'invalid' };
+      }
+      throw error;
+    }
+
+    if (parsed.kind === 'skipped') {
+      return { acknowledged: true, skipped: true, eventType: parsed.eventType };
+    }
+
+    const envelope = parsed.envelope;
     const headers = parseKafkaHeaders(context.getMessage().headers);
 
     const outcome = await this.retryRunner.execute({
@@ -49,6 +103,9 @@ export class OrderEventsConsumer {
     return { acknowledged: true, outcome };
   }
 
+  /**
+   * Handles `stock.released` — order cancelled after inventory compensation.
+   */
   @EventPattern(EventType.STOCK_RELEASED)
   async handleStockReleased(
     @Payload() payload: unknown,
@@ -75,6 +132,9 @@ export class OrderEventsConsumer {
     return { acknowledged: true, outcome };
   }
 
+  /**
+   * Handles `stock.failed` — marks order failed when reservation cannot complete.
+   */
   @EventPattern(EventType.STOCK_FAILED)
   async handleStockFailed(
     @Payload() payload: unknown,
@@ -101,7 +161,9 @@ export class OrderEventsConsumer {
     return { acknowledged: true, outcome };
   }
 
-  /** Marks end of happy path when customer notification is confirmed. */
+  /**
+   * Handles `notification.sent` — terminal happy-path status `completed`.
+   */
   @EventPattern(EventType.NOTIFICATION_SENT)
   async handleNotificationSent(
     @Payload() payload: unknown,

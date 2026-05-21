@@ -1,3 +1,38 @@
+/**
+ * @file orders.service.ts
+ * @module order-service — order domain + saga initiation
+ *
+ * Owns the order aggregate in SQLite and coordinates the **first Kafka event**
+ * in the choreography. Also applies status transitions when feedback events arrive
+ * from payment, stock, and notification services.
+ *
+ * ## createOrder flow (HTTP → Kafka)
+ *
+ * ```
+ * POST /orders
+ *   → compute totalAmount, persist OrderEntity (status=pending, eventId=null)
+ *   → assign envelope.eventId, save (producer idempotency)
+ *   → EventPublisher.publish(order.created) key=orderId
+ *   → on publish failure: status=failed, 500 to client
+ * ```
+ *
+ * ## Producer idempotency (SQLite + shared strategy)
+ *
+ * Uses {@link IdempotencyStrategy.EVENT_ID_PER_AGGREGATE}:
+ *
+ * - One `eventId` per order, generated before publish
+ * - Stored on the row before emitting so retries reuse the same id
+ * - `hasPublishedEventId` skips duplicate publish if HTTP client retries
+ *
+ * ## Consumer-driven status updates
+ *
+ * `updateOrderStatus` is called from `OrderEventsConsumer` when saga branches
+ * complete (`completed`, `failed`, `cancelled`).
+ *
+ * @see OrderEntity
+ * @see EventPublisher
+ * @see OrderEventsConsumer
+ */
 import {
   Injectable,
   InternalServerErrorException,
@@ -21,6 +56,9 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { OrderEntity } from './entities/order.entity';
 import { OrderStatus } from './entities/order-status.enum';
 
+/**
+ * Application service for order persistence and Kafka saga orchestration.
+ */
 @Injectable()
 export class OrdersService {
   private readonly logger = new Logger(OrdersService.name);
@@ -32,13 +70,16 @@ export class OrdersService {
   ) {}
 
   /**
-   * Persists the order, builds an {@link EventEnvelope}, publishes to `order.events`.
+   * Creates order in SQLite and publishes `order.created` to `order.events`.
    *
    * Idempotency ({@link IdempotencyStrategy.EVENT_ID_PER_AGGREGATE}):
    * - `eventId` generated once per order
-   * - stored before publish so retries reuse the same id
-   * - skips publish when `eventId` is already set
-   * - Kafka message key = `orderId` (partition ordering)
+   * - Stored before publish so retries reuse the same id
+   * - Skips publish when `eventId` is already set on the row
+   * - Kafka message key = `orderId` for partition ordering
+   *
+   * @param dto - Validated REST body
+   * @returns API response with orderId, status, amounts, eventId, correlationId
    */
   async createOrder(dto: CreateOrderDto) {
     const orderId = randomUUID();
@@ -118,7 +159,13 @@ export class OrdersService {
     return this.toCreateOrderResponse(order, envelope.eventId);
   }
 
-  /** Updates persisted status when downstream saga completes or fails. */
+  /**
+   * Updates order status when Kafka feedback events are processed.
+   *
+   * @param orderId - Aggregate id from event payload
+   * @param status - Target {@link OrderStatus}
+   * @throws NotFoundException when no row matches orderId
+   */
   async updateOrderStatus(orderId: string, status: OrderStatus): Promise<void> {
     const result = await this.ordersRepository.update({ id: orderId }, { status });
     if (result.affected === 0) {
@@ -126,6 +173,12 @@ export class OrdersService {
     }
   }
 
+  /**
+   * Maps entity to HTTP response shape for create order endpoint.
+   *
+   * @param order - Persisted aggregate
+   * @param eventId - Optional override when just published
+   */
   private toCreateOrderResponse(order: OrderEntity, eventId?: string) {
     return {
       orderId: order.id,

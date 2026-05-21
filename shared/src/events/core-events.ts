@@ -1,8 +1,15 @@
+/**
+ * Happy-path and primary-failure subset of the full event catalog.
+ *
+ * Used in documentation, demos, and `verify-payment-full-flow` to describe the minimal
+ * order → payment → stock → notification saga without auxiliary events like
+ * `payment.requested` or `stock.released`.
+ */
 import { EventType, type EventTypeValue } from './event-types';
 
 /**
- * Core domain events that define the primary order-processing flow.
- * Other events in the catalog support cancellations, internal steps, and failures.
+ * Events considered "core" to understanding the main business flow.
+ * Superset of {@link CORE_EVENT_FLOW} plus {@link CORE_FAILURE_EVENT}.
  */
 export const CORE_SYSTEM_EVENTS = [
   EventType.ORDER_CREATED,
@@ -12,9 +19,13 @@ export const CORE_SYSTEM_EVENTS = [
   EventType.NOTIFICATION_SENT,
 ] as const satisfies readonly EventTypeValue[];
 
+/** Narrowed type for events in {@link CORE_SYSTEM_EVENTS}. */
 export type CoreSystemEvent = (typeof CORE_SYSTEM_EVENTS)[number];
 
-/** Happy-path sequence (failure branch: payment.failed) */
+/**
+ * Ordered happy-path sequence for diagrams and integration checks.
+ * On payment failure the branch emits {@link CORE_FAILURE_EVENT} instead of continuing.
+ */
 export const CORE_EVENT_FLOW: readonly CoreSystemEvent[] = [
   EventType.ORDER_CREATED,
   EventType.PAYMENT_PROCESSED,
@@ -22,9 +33,11 @@ export const CORE_EVENT_FLOW: readonly CoreSystemEvent[] = [
   EventType.NOTIFICATION_SENT,
 ];
 
+/** Human-readable arrow chain matching {@link CORE_EVENT_FLOW} (logs, README). */
 export const CORE_EVENT_FLOW_LABEL =
   'order.created → payment.processed → stock.reserved → notification.sent';
 
+/** Primary compensating/failure event on the payment step of the core flow. */
 export const CORE_FAILURE_EVENT: CoreSystemEvent = EventType.PAYMENT_FAILED;
 
 /** Narrows an event type to the documented happy-path / primary failure set. */

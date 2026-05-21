@@ -91,6 +91,115 @@ Env: `KAFKA_PRODUCER_RETRY_MAX_ATTEMPTS`, `KAFKA_PRODUCER_RETRY_BASE_DELAY_MS`, 
 | Validar no Kafka UI | Tópico `order.events` — key = `orderId`, value = envelope JSON |
 | Automatizar validação | `npm run verify:order-kafka` ou `KAFKA_INTEGRATION_TEST=true npm run test:integration -w order-service` |
 
+### Checklist — PaymentService (simulação distribuída)
+
+| Item | Implementation |
+|------|----------------|
+| Criar PaymentService | `payment.service.ts` — `processPayment()` |
+| Simular aprovação (~80%) | `payment.processed` + log `[PAYMENT SUCCESS]` |
+| Simular falha aleatória (~20%) | `Math.random() < PAYMENT_FAILURE_RATE` → `payment.failed` |
+| Regras de negócio | `payment-rules.ts` — recusa antes do gateway simulado |
+| Tipos de falha | `timeout`, `gateway_unavailable`, `card_declined`, `connection_reset` |
+
+**Cenário 1 — sucesso:** `payment.processed`  
+**Cenário 2 — falha:** `payment.failed`
+
+**Logs estruturados (grep no terminal):**
+
+```
+[PAYMENT SUCCESS] orderId=... paymentId=... status=approved
+[PAYMENT FAILED]  orderId=... reason=Payment gateway timeout
+```
+
+**Kafka UI:** tópico `payment.events` com `eventType` = `payment.processed` ou `payment.failed`.
+
+### Checklist — Publicação de resultado (payment.events)
+
+| Item | Implementation |
+|------|----------------|
+| `payment.processed` — criar evento | `createEventEnvelope` em `publishPaymentProcessed()` |
+| Publicar sucesso em `payment.events` | `resolveKafkaTopic(PAYMENT_PROCESSED)` → `payment.events` |
+| `payment.failed` — criar evento | `createEventEnvelope` em `publishPaymentFailed()` |
+| Publicar falha em `payment.events` | `resolveKafkaTopic(PAYMENT_FAILED)` → `payment.events` |
+
+Consumidores: **stock-service** filtra `payment.processed`; **order-service** e **notification-service** filtram `payment.failed`.
+
+### Checklist — Retry (consumer)
+
+| Item | Implementation |
+|------|----------------|
+| Configurar retry do consumer | `KafkaRetryRunner` + `KafkaRetryExecutor` em cada `@EventPattern` handler |
+| Configurar backoff | Exponencial: `min(baseDelay × multiplier^(attempt-1), maxDelay)` |
+| Controlar tentativas | `KAFKA_CONSUMER_RETRY_MAX_ATTEMPTS` (default **3**) |
+
+**Fluxo:** handler falha → sleep(backoff) → republica no mesmo tópico com `x-retry-count` → após max tentativas → `{topic}.dlq`
+
+**Env:** `KAFKA_CONSUMER_RETRY_MAX_ATTEMPTS`, `KAFKA_CONSUMER_RETRY_BASE_DELAY_MS`, `KAFKA_CONSUMER_RETRY_MAX_DELAY_MS`, `KAFKA_CONSUMER_RETRY_BACKOFF_MULTIPLIER` (ou `KAFKA_RETRY_*`).
+
+**Logs:** `[KAFKA CONSUMER RETRY]` no startup · `[KAFKA RETRY]` em cada retry · `[KAFKA DLQ]` ao esgotar tentativas.
+
+Exemplo com defaults: tentativas **1s → 2s → DLQ** (3 tentativas totais).
+
+Env: `PAYMENT_FAILURE_RATE=0.2`, `PAYMENT_FORCE_FAILURE`, `PAYMENT_TIMEOUT_DELAY_MS`, `PAYMENT_MIN_AMOUNT`, `PAYMENT_MAX_AMOUNT`.
+
+### Checklist — Idempotência (payment-service)
+
+| Item | Implementation |
+|------|----------------|
+| Processamento único | `processed_events.inbound_event_id` (PK) |
+| Evitar pagamento duplicado | bloqueia 2º `approved` para mesmo `orderId` |
+| Persistir eventos processados | SQLite `PAYMENT_DATABASE_PATH` — `ProcessedEventsService` |
+
+### Checklist — Logs (payment-service)
+
+| Log | Tag |
+|-----|-----|
+| Recebimento do evento | `[EVENT RECEIVED]` |
+| Aprovação | `[PAYMENT SUCCESS]` |
+| Falha | `[PAYMENT FAILED]` |
+| Retry consumer | `[KAFKA RETRY]` / `[PAYMENT RETRY]` |
+| Idempotência | `[IDEMPOTENCY SKIP]` |
+
+### Checklist — Testes (fluxo completo)
+
+| Step | Command / validação |
+|------|---------------------|
+| Publicar order.created | `POST /orders` ou `npm run verify:order-kafka` |
+| Consumir + simular pagamento | `npm run start:payment` (logs `[EVENT RECEIVED]`) |
+| Publicar payment.processed/failed | automático em `payment.events` |
+| Validar Kafka UI | `npm run verify:payment-flow` (com `PAYMENT_FAILURE_RATE=0` para sucesso) |
+
+### Checklist — Consumir `order.events` (payment-service)
+
+| Item | Implementation |
+|------|----------------|
+| Consumir tópico `order.events` | `@EventPattern(OrderKafkaTopic.ORDER_EVENTS)` |
+| Filtrar `order.created` | `parseOrderEventsMessage()` → `kind: 'skipped'` para outros tipos |
+| Deserializar payload | `deserializeKafkaPayload()` (Buffer / string / object) + `extractEnvelope()` |
+| Validar estrutura do evento | `validateEventEnvelope()` + `validateOrderCreatedPayload()` |
+
+Código: `shared/src/kafka/consume-order-events.ts`, `payment-events.consumer.ts`.
+
+### Checklist — Kafka consumer
+
+| Item | Implementation |
+|------|----------------|
+| Configurar Kafka consumer | `app.connectMicroservice({ transport: KAFKA, options: getKafkaConsumerConfig(service) })` |
+| Configurar consumer group | `resolveConsumerGroup()` → default `eventflow.<service>` (`shared/src/kafka/consumer-groups.ts`) |
+| Conectar ao broker Kafka | `KAFKA_BOOTSTRAP_SERVERS` → `client.brokers` in `getKafkaConsumerConfig()` |
+
+**Consumer groups (default):**
+
+| Service | Group ID |
+|---------|----------|
+| order-service | `eventflow.order-service` |
+| payment-service | `eventflow.payment-service` |
+| stock-service | `eventflow.stock-service` |
+| notification-service | `eventflow.notification-service` |
+| dlq-service | `eventflow.dlq-service` |
+
+Startup log example: `Kafka consumer: service=payment-service brokers=[localhost:9092] groupId=eventflow.payment-service ...`
+
 ### Checklist — Idempotência
 
 | Item | Implementation |

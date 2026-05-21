@@ -1,9 +1,17 @@
+/**
+ * DLQ failure envelope shape and factory helpers.
+ *
+ * When {@link KafkaRetryExecutor} exhausts consumer retries, it wraps the original message
+ * in {@link EventFailurePayload} and publishes to `{topic}.dlq`. The dlq-service and
+ * operators use this structure for replay decisions and incident triage.
+ */
 import type { ServiceName } from './event-catalog';
 import type { EventEnvelope } from './envelope';
 import { createEventEnvelope } from './create-envelope';
 import type { EventTypeValue } from './event-types';
 import type { RetryPolicyConfig } from '../kafka/retry/retry-policy';
 
+/** Serializable snapshot of the error that caused handler failure. */
 export interface EventErrorDetails {
   message: string;
   name: string;
@@ -11,6 +19,7 @@ export interface EventErrorDetails {
   occurredAt: string;
 }
 
+/** Retry counters and exhaustion flag copied from {@link RetryPolicyConfig} at failure time. */
 export interface EventRetryDetails {
   attempt: number;
   maxAttempts: number;
