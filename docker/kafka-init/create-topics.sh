@@ -19,8 +19,6 @@ RETENTION_MS="${KAFKA_TOPIC_RETENTION_MS:-604800000}"
 CLEANUP_POLICY="${KAFKA_TOPIC_CLEANUP_POLICY:-delete}"
 DLQ_SUFFIX=".dlq"
 
-TOPIC_CONFIG="retention.ms=${RETENTION_MS},cleanup.policy=${CLEANUP_POLICY}"
-
 TOPICS=(
   "order.events"
   "order.cancelled"
@@ -41,13 +39,14 @@ create_topic() {
     --topic "${name}" \
     --partitions "${PARTITIONS}" \
     --replication-factor "${REPLICATION}" \
-    --config "${TOPIC_CONFIG}"
+    --config "retention.ms=${RETENTION_MS}" \
+    --config "cleanup.policy=${CLEANUP_POLICY}"
 }
 
 echo "Waiting for Kafka at ${BOOTSTRAP}..."
 cub kafka-ready -b "${BOOTSTRAP}" 1 60
 
-echo "Topic config: partitions=${PARTITIONS} replication=${REPLICATION} ${TOPIC_CONFIG}"
+echo "Topic config: partitions=${PARTITIONS} replication=${REPLICATION} retention.ms=${RETENTION_MS} cleanup.policy=${CLEANUP_POLICY}"
 
 for topic in "${TOPICS[@]}"; do
   echo "Creating topic: ${topic}"
@@ -55,6 +54,16 @@ for topic in "${TOPICS[@]}"; do
 
   echo "Creating DLQ topic: ${topic}${DLQ_SUFFIX}"
   create_topic "${topic}${DLQ_SUFFIX}"
+done
+
+# Topics auto-created earlier (e.g. order.events with 1 partition) — bump to target count.
+echo "Ensuring partition count=${PARTITIONS} on aggregate topics..."
+for topic in "order.events" "payment.events"; do
+  if kafka-topics --bootstrap-server "${BOOTSTRAP}" --describe --topic "${topic}" >/dev/null 2>&1; then
+    echo "Altering partitions: ${topic}"
+    kafka-topics --bootstrap-server "${BOOTSTRAP}" \
+      --alter --topic "${topic}" --partitions "${PARTITIONS}" || true
+  fi
 done
 
 echo "All Kafka topics created successfully."

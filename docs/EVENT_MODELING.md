@@ -2,6 +2,8 @@
 
 Design reference for EventFlow domain events, Kafka topics, and message standards.
 
+> **Regras completas (fonte única):** [RULES.md](./RULES.md) — fluxo, tópicos agregados, partições, escalabilidade, producer/consumer, Docker e troubleshooting.
+
 ## Core system events
 
 These five events define the primary business flow:
@@ -69,7 +71,10 @@ Code: `services/order-service/src/orders/`.
 |------|----------------|
 | Configurar retry do producer | KafkaJS `producer.retry` in `getKafkaClientConfig()` |
 | Configurar retry backoff | `publishWithProducerRetry()` + `KAFKA_PRODUCER_RETRY_*` / `KAFKA_RETRY_*` |
+| Publicação confiável | `emitKafkaEvent()` — não usar `firstValueFrom(emit())` |
+| Producer-only client | `producerOnlyMode: true` em `getKafkaClientConfig()` |
 | Tratar falha de publicação | `OrdersService` marks order `failed`; logs error; HTTP 500 |
+| Env vazias | **Proibido** `KAFKA_RETRY_*=` vazio → `maxAttempts: NaN` (ver [RULES.md §6](./RULES.md#6-producer-publicação-kafka)) |
 
 Env: `KAFKA_PRODUCER_RETRY_MAX_ATTEMPTS`, `KAFKA_PRODUCER_RETRY_BASE_DELAY_MS`, `KAFKA_PRODUCER_RETRY_MAX_DELAY_MS`, `KAFKA_PRODUCER_RETRY_BACKOFF_MULTIPLIER`.
 
@@ -200,6 +205,74 @@ Código: `shared/src/kafka/consume-order-events.ts`, `payment-events.consumer.ts
 
 Startup log example: `Kafka consumer: service=payment-service brokers=[localhost:9092] groupId=eventflow.payment-service ...`
 
+**NestJS no broker:** o grupo aparece como `eventflow.<service>-server` (ex.: `eventflow.payment-service-server`). Ver [RULES.md §4](./RULES.md#4-consumer-groups-e-escalabilidade-horizontal).
+
+### Checklist — Escalabilidade horizontal (payment-service consumers)
+
+| Item | Status | Implementation |
+|------|--------|----------------|
+| Subir múltiplas instâncias | ✅ | `payment-service-1`, `payment-service-2` (+ opcional `payment-service-3`) em `docker/services/docker-compose.yml` |
+| Configurar mesmo `groupId` | ✅ | Todas as réplicas: `KAFKA_CONSUMER_GROUP_PAYMENT_SERVICE=eventflow.payment-service` (default em `consumer-groups.ts`) |
+| Balanceamento de partições | ✅ | Kafka atribui partições de `order.events` entre membros do grupo (máx. = número de partições do tópico, default **3**) |
+| `clientId` distinto por instância | ✅ | `resolveConsumerClientId()` acrescenta `HOSTNAME` do container (`payment-service-consumer-<id>`) |
+| Idempotência entre réplicas | ✅ | Volume Docker `payment-idempotency` → `/data/payments.sqlite` compartilhado |
+
+**Regra:** réplicas do **mesmo** serviço compartilham **um** `groupId`. Nunca use `groupId` diferente por instância (isso duplicaria o processamento).
+
+**Subir (Docker):**
+
+```bash
+podman-compose -f docker/services/docker-compose.yml up -d --build payment-service-1 payment-service-2
+# ou
+npm run docker:payment-instances
+```
+
+**Validar no Kafka UI:** Consumers → `eventflow.payment-service` → **2+ members**.
+
+**Validar via script:**
+
+```bash
+npm run verify:payment-scale
+```
+
+### Checklist — Partições, distribuição e balanceamento
+
+| Item | Comando / validação |
+|------|---------------------|
+| Criar múltiplas partitions | `npm run kafka:partitions` (ou `kafka-init` com `KAFKA_TOPIC_PARTITIONS=3`) |
+| Testar distribuição | `npm run verify:kafka-partitions` — histograma por partition |
+| Validar ordenação por key | mesmo script — 5 produces com mesma key → mesma partition; `orderId` = Kafka key |
+| Testar balanceamento | mesmo script — consumer group com 2+ members em `order.events` |
+
+```bash
+# 1) Aumentar partitions (host)
+npm run kafka:partitions
+
+# 2) Rebalancear consumers
+podman-compose -f docker/services/docker-compose.yml restart payment-service-1 payment-service-2
+
+# 3) Validar
+npm run verify:kafka-partitions
+```
+
+**Regra:** throughput horizontal ≤ número de partitions; **ordenacao por pedido** = sempre `key = orderId`.
+
+**Logs esperados (cada instância):**
+
+```
+Kafka consumer: service=payment-service ... groupId=eventflow.payment-service clientId=payment-service-consumer-<hostname>
+```
+
+**Desenvolvimento local (2 terminais, mesmo grupo):**
+
+```bash
+# Terminal 1
+PORT=3002 npm run start:payment
+
+# Terminal 2 — mesmo groupId (default), clientId diferente
+PORT=3006 KAFKA_CONSUMER_CLIENT_ID_SUFFIX=instance-2 npm run start:payment
+```
+
 ### Checklist — Idempotência
 
 | Item | Implementation |
@@ -247,7 +320,7 @@ Factory: `createEventEnvelope()` — auto-generates `eventId`, `timestamp`, and 
 
 ### Base topics
 
-One topic per event type (11 base + 11 DLQ). Created automatically by `kafka-init` on `docker compose up`.
+Aggregate streams (`order.events`, `payment.events`) plus one topic per other event type. Created by `kafka-init`; `order.events` / `payment.events` are altered to **3 partitions** if they already existed with fewer. See [RULES.md §3](./RULES.md#3-partições-chave-e-ordenação).
 
 | Setting | Default | Env variable |
 |---------|---------|--------------|
@@ -277,5 +350,6 @@ Adjust via `.env` or Docker environment variables before running `kafka-init`.
 
 ## Related docs
 
+- [RULES.md](./RULES.md) — **todas as regras** do sistema (referência consolidada)
 - [EVENT_CATALOG.md](./EVENT_CATALOG.md) — full event list and service ownership
 - [RETRY_DLQ.md](./RETRY_DLQ.md) — retry and dead-letter handling

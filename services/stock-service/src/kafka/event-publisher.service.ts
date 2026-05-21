@@ -15,7 +15,6 @@
  */
 import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
 import { ClientKafka } from '@nestjs/microservices';
-import { firstValueFrom } from 'rxjs';
 import {
   type EventEnvelope,
   type EventFailurePayload,
@@ -23,6 +22,7 @@ import {
   type EventTypeValue,
   type KafkaEventTransport,
   type PublishOptions,
+  emitKafkaEvent,
   envelopeToKafkaHeaders,
   resolveKafkaTopic,
   resolvePartitionKey,
@@ -71,13 +71,11 @@ export class EventPublisher implements OnModuleInit, KafkaEventTransport {
       ...options?.headers,
     };
 
-    await firstValueFrom(
-      this.kafkaClient.emit(kafkaTopic, {
-        key: partitionKey,
-        value: envelope,
-        headers,
-      }),
-    );
+    await emitKafkaEvent(this.kafkaClient, kafkaTopic, {
+      key: partitionKey,
+      value: envelope,
+      headers,
+    });
   }
 
   /**
@@ -102,12 +100,10 @@ export class EventPublisher implements OnModuleInit, KafkaEventTransport {
       ...options?.headers,
     };
 
-    await firstValueFrom(
-      this.kafkaClient.emit(dlqTopic, {
-        key: partitionKey,
-        value: envelope,
-        headers,
-      }),
-    );
+    await emitKafkaEvent(this.kafkaClient, dlqTopic, {
+      key: partitionKey,
+      value: envelope,
+      headers,
+    });
   }
 }

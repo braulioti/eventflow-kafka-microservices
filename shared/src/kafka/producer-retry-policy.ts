@@ -12,6 +12,19 @@ import {
   sleep,
 } from './retry/retry-policy';
 
+function resolveProducerRetryNumber(
+  producerEnv: string | undefined,
+  sharedEnv: string | undefined,
+  fallback: number,
+): number {
+  const raw = producerEnv ?? sharedEnv;
+  if (raw === undefined || raw.trim() === '') {
+    return fallback;
+  }
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 /**
  * Resolves retry limits for outbound publish operations.
  * Env: `KAFKA_PRODUCER_RETRY_*`, falling back to `KAFKA_RETRY_*`.
@@ -19,25 +32,30 @@ import {
 export function resolveProducerRetryPolicy(
   overrides?: Partial<RetryPolicyConfig>,
 ): RetryPolicyConfig {
-  return resolveRetryPolicy({
-    maxAttempts: Number(
-      process.env.KAFKA_PRODUCER_RETRY_MAX_ATTEMPTS ??
-        process.env.KAFKA_RETRY_MAX_ATTEMPTS,
+  const fallback = resolveRetryPolicy();
+  return {
+    maxAttempts: resolveProducerRetryNumber(
+      process.env.KAFKA_PRODUCER_RETRY_MAX_ATTEMPTS,
+      process.env.KAFKA_RETRY_MAX_ATTEMPTS,
+      fallback.maxAttempts,
     ),
-    baseDelayMs: Number(
-      process.env.KAFKA_PRODUCER_RETRY_BASE_DELAY_MS ??
-        process.env.KAFKA_RETRY_BASE_DELAY_MS,
+    baseDelayMs: resolveProducerRetryNumber(
+      process.env.KAFKA_PRODUCER_RETRY_BASE_DELAY_MS,
+      process.env.KAFKA_RETRY_BASE_DELAY_MS,
+      fallback.baseDelayMs,
     ),
-    maxDelayMs: Number(
-      process.env.KAFKA_PRODUCER_RETRY_MAX_DELAY_MS ??
-        process.env.KAFKA_RETRY_MAX_DELAY_MS,
+    maxDelayMs: resolveProducerRetryNumber(
+      process.env.KAFKA_PRODUCER_RETRY_MAX_DELAY_MS,
+      process.env.KAFKA_RETRY_MAX_DELAY_MS,
+      fallback.maxDelayMs,
     ),
-    backoffMultiplier: Number(
-      process.env.KAFKA_PRODUCER_RETRY_BACKOFF_MULTIPLIER ??
-        process.env.KAFKA_RETRY_BACKOFF_MULTIPLIER,
+    backoffMultiplier: resolveProducerRetryNumber(
+      process.env.KAFKA_PRODUCER_RETRY_BACKOFF_MULTIPLIER,
+      process.env.KAFKA_RETRY_BACKOFF_MULTIPLIER,
+      fallback.backoffMultiplier,
     ),
     ...overrides,
-  });
+  };
 }
 
 export interface PublishWithRetryOptions {

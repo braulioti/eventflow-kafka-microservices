@@ -1,5 +1,26 @@
 version: '3.8'
 
+# Shared template for horizontally scaled payment-service instances.
+# All replicas use consumer group `eventflow.payment-service` (Kafka assigns partitions).
+# Idempotency SQLite is on a shared volume — suitable for demos; use Postgres/Redis in production.
+x-payment-service: &payment-service
+  build:
+    context: ../..
+    dockerfile: docker/services/payment-service/Dockerfile
+  image: eventflow-payment-service
+  environment: &payment-service-env
+    PORT: 3002
+    KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    KAFKA_CONSUMER_GROUP_PAYMENT_SERVICE: eventflow.payment-service
+    PAYMENT_DATABASE_PATH: /data/payments.sqlite
+    PAYMENT_FAILURE_RATE: ${PAYMENT_FAILURE_RATE:-0.2}
+  volumes:
+    - payment-idempotency:/data
+  networks:
+    - eventflow
+  expose:
+    - "3002"
+
 services:
   order-service:
     build:
@@ -17,21 +38,32 @@ services:
     networks:
       - eventflow
 
-  payment-service:
-    build:
-      context: ../..
-      dockerfile: docker/services/payment-service/Dockerfile
-    image: eventflow-payment-service
-    container_name: eventflow-payment-service
+  # Instance 1 — HTTP exposed for health checks and local debugging
+  payment-service-1:
+    <<: *payment-service
+    container_name: eventflow-payment-service-1
     ports:
       - "${PAYMENT_SERVICE_PORT:-3002}:3002"
-    environment:
-      PORT: 3002
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      PAYMENT_DATABASE_PATH: /tmp/payments.sqlite
-      PAYMENT_FAILURE_RATE: ${PAYMENT_FAILURE_RATE:-0.2}
-    networks:
-      - eventflow
+
+  # Instance 2 — Kafka consumer only (no host port; avoids bind conflicts)
+  payment-service-2:
+    <<: *payment-service
+    container_name: eventflow-payment-service-2
+
+  # Optional third instance: podman-compose --profile payment-scale-3 up -d
+  payment-service-3:
+    <<: *payment-service
+    container_name: eventflow-payment-service-3
+    profiles:
+      - payment-scale-3
+
+  # Alternative: scale a single service definition (no fixed container_name / ports):
+  #   PAYMENT_SERVICE_REPLICAS=3 podman-compose -f docker/services/docker-compose.yml \
+  #     -f docker/services/docker-compose.payment-scale.yml up -d --build payment-service
+  payment-service:
+    <<: *payment-service
+    profiles:
+      - payment-compose-scale
 
   stock-service:
     build:
@@ -74,6 +106,9 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
     networks:
       - eventflow
+
+volumes:
+  payment-idempotency:
 
 networks:
   eventflow:

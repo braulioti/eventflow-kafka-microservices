@@ -1,0 +1,31 @@
+# Override to run N replicas via `docker compose up --scale payment-service=N`.
+# Use instead of payment-service-1/2 when you prefer a single service name in `podman ps`.
+#
+# Example:
+#   PAYMENT_SERVICE_REPLICAS=3 podman-compose \
+#     -f docker/services/docker-compose.yml \
+#     -f docker/services/docker-compose.payment-scale.yml \
+#     --profile payment-compose-scale up -d --build --scale payment-service=3 \
+#     order-service stock-service notification-service dlq-service
+#
+# Do not enable payment-service-1/2 and payment-compose-scale at the same time
+# (duplicate consumers in group eventflow.payment-service).
+
+version: '3.8'
+
+services:
+  payment-service-1:
+    profiles:
+      - disabled-named-instances
+
+  payment-service-2:
+    profiles:
+      - disabled-named-instances
+
+  payment-service-3:
+    profiles:
+      - disabled-named-instances
+
+  payment-service:
+    profiles:
+      - payment-compose-scale

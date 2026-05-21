@@ -24,6 +24,8 @@ export function getKafkaClientConfig(clientId: string) {
   const producerRetry = resolveProducerRetryPolicy();
 
   return {
+    /** Nest ClientKafka: producer-only avoids an extra consumer competing with the microservice. */
+    producerOnlyMode: true,
     client: {
       clientId,
       brokers: resolveKafkaBrokers(),

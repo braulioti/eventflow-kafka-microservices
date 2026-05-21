@@ -19,6 +19,11 @@
     "start:dlq": "npm run start:dev -w dlq-service",
     "test": "npm run test --workspaces --if-present",
     "verify:order-kafka": "node scripts/verify-order-kafka-flow.mjs",
-    "verify:payment-flow": "node scripts/verify-payment-full-flow.mjs"
+    "verify:payment-flow": "node scripts/verify-payment-full-flow.mjs",
+    "docker:payment-instances": "bash scripts/up-payment-instances.sh",
+    "docker:rebuild-services": "bash scripts/rebuild-eventflow-services.sh",
+    "verify:payment-scale": "node scripts/verify-payment-consumer-scale.mjs",
+    "kafka:partitions": "bash scripts/kafka-set-topic-partitions.sh",
+    "verify:kafka-partitions": "node scripts/verify-kafka-partitions.mjs"
   }
 }

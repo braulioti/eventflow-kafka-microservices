@@ -63,6 +63,10 @@ async function bootstrap() {
 
   const consumerInfo = getKafkaConsumerConnectionInfo('payment-service');
   Logger.log(formatKafkaConsumerBootstrap(consumerInfo), 'KafkaConsumer');
+  Logger.log(
+    `Payment consumer instance: clientId=${consumerInfo.clientId} groupId=${consumerInfo.groupId}`,
+    'KafkaConsumer',
+  );
 
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.KAFKA,

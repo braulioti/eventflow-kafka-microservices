@@ -2,7 +2,7 @@
 
 Canonical reference for EventFlow domain events, Kafka topics, and service ownership.
 
-See [EVENT_MODELING.md](./EVENT_MODELING.md) for core events, partition strategy, retention, and envelope rules.
+See [RULES.md](./RULES.md) for all system rules, [EVENT_MODELING.md](./EVENT_MODELING.md) for modeling details.
 
 ## Core system events
 
@@ -22,7 +22,7 @@ Happy path: `order.created → payment.processed → stock.reserved → notifica
 |---------|----------|
 | **Consistency** | Shared TypeScript contracts in `@eventflow/shared` |
 | **Traceability** | `EventEnvelope` with `eventId`, `correlationId`, `causationId` |
-| **Scalability** | One topic per event type; 3 partitions; message key = `orderId` |
+| **Scalability** | Aggregate topics (`order.events`, `payment.events`); 3 partitions; key = `orderId`; ver [RULES.md](./RULES.md) |
 | **Retention** | 7 days default (`KAFKA_TOPIC_RETENTION_MS`) |
 | **Failure handling** | DLQ topic per event: `{event-type}.dlq` |
 | **Evolution** | `version` field on every envelope (current: `1.0`) |
@@ -73,7 +73,12 @@ Definitions live in `shared/src/events/`. Import from `@eventflow/shared` in ser
 ## Kafka integration
 
 - Transport: `@nestjs/microservices` + `kafkajs`
-- Producer: `EventPublisher` service per microservice
-- Consumer: `@EventPattern(EventType.*)` controllers
+- Producer: `EventPublisher` + `emitKafkaEvent()` + `publishWithProducerRetry()`
+- Consumer: `@EventPattern` (ex.: `order.events`, not legacy topic name alone)
 - Config: `getKafkaConsumerConfig(serviceName)` / `getKafkaClientConfig(clientId)`
 - Env: `KAFKA_BOOTSTRAP_SERVERS` (default `localhost:9092`)
+- Consumer group no broker: `eventflow.<service>-server` (Nest suffix)
+
+## Related
+
+- [RULES.md](./RULES.md) — regras completas

@@ -26,23 +26,37 @@ export const DEFAULT_RETRY_POLICY: RetryPolicyConfig = {
   backoffMultiplier: 2,
 };
 
+function resolveRetryNumber(
+  raw: string | undefined,
+  fallback: number,
+): number {
+  if (raw === undefined || raw.trim() === '') {
+    return fallback;
+  }
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 /** Merges env vars (KAFKA_RETRY_*) with optional overrides. */
 export function resolveRetryPolicy(
   overrides?: Partial<RetryPolicyConfig>,
 ): RetryPolicyConfig {
   return {
-    maxAttempts: Number(
-      process.env.KAFKA_RETRY_MAX_ATTEMPTS ?? DEFAULT_RETRY_POLICY.maxAttempts,
+    maxAttempts: resolveRetryNumber(
+      process.env.KAFKA_RETRY_MAX_ATTEMPTS,
+      DEFAULT_RETRY_POLICY.maxAttempts,
     ),
-    baseDelayMs: Number(
-      process.env.KAFKA_RETRY_BASE_DELAY_MS ?? DEFAULT_RETRY_POLICY.baseDelayMs,
+    baseDelayMs: resolveRetryNumber(
+      process.env.KAFKA_RETRY_BASE_DELAY_MS,
+      DEFAULT_RETRY_POLICY.baseDelayMs,
     ),
-    maxDelayMs: Number(
-      process.env.KAFKA_RETRY_MAX_DELAY_MS ?? DEFAULT_RETRY_POLICY.maxDelayMs,
+    maxDelayMs: resolveRetryNumber(
+      process.env.KAFKA_RETRY_MAX_DELAY_MS,
+      DEFAULT_RETRY_POLICY.maxDelayMs,
     ),
-    backoffMultiplier: Number(
-      process.env.KAFKA_RETRY_BACKOFF_MULTIPLIER ??
-        DEFAULT_RETRY_POLICY.backoffMultiplier,
+    backoffMultiplier: resolveRetryNumber(
+      process.env.KAFKA_RETRY_BACKOFF_MULTIPLIER,
+      DEFAULT_RETRY_POLICY.backoffMultiplier,
     ),
     ...overrides,
   };
@@ -57,25 +71,25 @@ export function resolveConsumerRetryPolicy(
 ): RetryPolicyConfig {
   const fallback = resolveRetryPolicy();
   return {
-    maxAttempts: Number(
+    maxAttempts: resolveRetryNumber(
       process.env.KAFKA_CONSUMER_RETRY_MAX_ATTEMPTS ??
-        process.env.KAFKA_RETRY_MAX_ATTEMPTS ??
-        fallback.maxAttempts,
+        process.env.KAFKA_RETRY_MAX_ATTEMPTS,
+      fallback.maxAttempts,
     ),
-    baseDelayMs: Number(
+    baseDelayMs: resolveRetryNumber(
       process.env.KAFKA_CONSUMER_RETRY_BASE_DELAY_MS ??
-        process.env.KAFKA_RETRY_BASE_DELAY_MS ??
-        fallback.baseDelayMs,
+        process.env.KAFKA_RETRY_BASE_DELAY_MS,
+      fallback.baseDelayMs,
     ),
-    maxDelayMs: Number(
+    maxDelayMs: resolveRetryNumber(
       process.env.KAFKA_CONSUMER_RETRY_MAX_DELAY_MS ??
-        process.env.KAFKA_RETRY_MAX_DELAY_MS ??
-        fallback.maxDelayMs,
+        process.env.KAFKA_RETRY_MAX_DELAY_MS,
+      fallback.maxDelayMs,
     ),
-    backoffMultiplier: Number(
+    backoffMultiplier: resolveRetryNumber(
       process.env.KAFKA_CONSUMER_RETRY_BACKOFF_MULTIPLIER ??
-        process.env.KAFKA_RETRY_BACKOFF_MULTIPLIER ??
-        fallback.backoffMultiplier,
+        process.env.KAFKA_RETRY_BACKOFF_MULTIPLIER,
+      fallback.backoffMultiplier,
     ),
     ...overrides,
   };

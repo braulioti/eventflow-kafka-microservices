@@ -2,7 +2,7 @@
 
 This document explains how the **EventFlow** project works end to end: the business problem it models, how microservices collaborate through Kafka, and the technical building blocks you need to run and extend the system locally.
 
-For quick commands, see the [README](../README.md). For event contracts and policies, see the linked references at the end.
+For quick commands, see the [README](../README.md). For **all system rules**, see [RULES.md](./RULES.md).
 
 ---
 
@@ -340,13 +340,14 @@ Details: [EVENT_MODELING.md](./EVENT_MODELING.md), `shared/src/events/envelope-s
 
 #### Topic layout
 
-- **One topic per event type** (name = `eventType`, e.g. `order.created`)
-- **One DLQ topic per base topic:** `{event-type}.dlq` (e.g. `order.created.dlq`)
-- **22 topics total** — created by `docker/kafka-init/create-topics.sh` and mirrored in `scripts/create-kafka-topics.sh`
+- **Tópicos agregados:** `order.events` (`order.created`), `payment.events` (`payment.processed`, `payment.failed`)
+- **Demais eventos:** um tópico por `eventType` (ex.: `stock.reserved`)
+- **DLQ:** `{topic}.dlq` para cada tópico base
+- Criados por `docker/kafka-init/create-topics.sh` — ver [RULES.md](./RULES.md)
 
-Base topics:
+Tópicos principais do `kafka-init`:
 
-`order.created`, `order.cancelled`, `payment.requested`, `payment.processed`, `payment.failed`, `stock.reserved`, `stock.released`, `stock.failed`, `notification.send`, `notification.sent`, `notification.failed`
+`order.events`, `order.cancelled`, `payment.requested`, `payment.events`, `stock.reserved`, `stock.released`, `stock.failed`, `notification.send`, `notification.sent`, `notification.failed` (+ DLQs)
 
 #### Partitions and message key
 
@@ -358,13 +359,15 @@ Base topics:
 
 Consumer groups (one per service, enables horizontal scale up to partition count):
 
-| Service | Group id |
-|---------|----------|
-| order-service | `eventflow.order-service` |
-| payment-service | `eventflow.payment-service` |
-| stock-service | `eventflow.stock-service` |
-| notification-service | `eventflow.notification-service` |
-| dlq-service | `eventflow.dlq-service` |
+| Service | Group id (config) | No broker (Nest `-server`) |
+|---------|-------------------|----------------------------|
+| order-service | `eventflow.order-service` | `eventflow.order-service-server` |
+| payment-service | `eventflow.payment-service` | `eventflow.payment-service-server` |
+| stock-service | `eventflow.stock-service` | `eventflow.stock-service-server` |
+| notification-service | `eventflow.notification-service` | `eventflow.notification-service-server` |
+| dlq-service | `eventflow.dlq-service` | `eventflow.dlq-service-server` |
+
+**Payment horizontal scale:** `payment-service-1`, `payment-service-2` (mesmo groupId). Ver [RULES.md §4](./RULES.md#4-consumer-groups-e-escalabilidade-horizontal).
 
 #### Retention
 
@@ -404,8 +407,8 @@ sequenceDiagram
 
   C->>O: POST /orders
   O->>O: orderId, totalAmount, envelope
-  O->>K: order.created (key=orderId)
-  K->>P: consume order.created
+  O->>K: order.created on order.events (key=orderId)
+  K->>P: consume order.events (filter order.created)
   P->>K: payment.requested
   P->>K: payment.processed
   K->>S: consume payment.processed
@@ -539,9 +542,10 @@ curl -X POST http://localhost:3001/orders \
 
 | Document | Description |
 |----------|-------------|
+| [RULES.md](./RULES.md) | **Regras consolidadas** — tópicos, partições, scale, producer, troubleshooting |
 | [README.md](../README.md) | Quick start, ports, curl examples |
 | [EVENT_CATALOG.md](./EVENT_CATALOG.md) | Full event list, producers, consumers, envelope example |
-| [EVENT_MODELING.md](./EVENT_MODELING.md) | Core events, partition strategy, retention, envelope rules |
+| [EVENT_MODELING.md](./EVENT_MODELING.md) | Core events, checklists, partition strategy, envelope |
 | [RETRY_DLQ.md](./RETRY_DLQ.md) | Retry policy, headers, DLQ payload shape |
 
 **Code anchors:**

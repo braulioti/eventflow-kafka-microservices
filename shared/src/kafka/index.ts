@@ -19,3 +19,4 @@ export * from './partition-key';
 export * from './kafka-event-transport';
 export * from './retry';
 export * from './producer-retry-policy';
+export * from './emit-kafka-event';

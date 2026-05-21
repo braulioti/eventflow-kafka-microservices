@@ -41,13 +41,22 @@ export function resolveConsumerGroup(service: ServiceName): string {
 
 /**
  * Kafka client id for consumer connections (broker-side connection labeling).
- * Override with `KAFKA_CONSUMER_CLIENT_ID_<SERVICE>` env var.
+ * Override with `KAFKA_CONSUMER_CLIENT_ID_<SERVICE>` or `KAFKA_CONSUMER_CLIENT_ID_SUFFIX`.
+ * When scaling horizontally, Docker/Podman set `HOSTNAME` per container — we append it
+ * so brokers can distinguish multiple consumers in the same group.
  */
 export function resolveConsumerClientId(service: ServiceName): string {
-  return (
-    process.env[`KAFKA_CONSUMER_CLIENT_ID_${service.toUpperCase().replace(/-/g, '_')}`]?.trim() ??
-    `${service}-consumer`
-  );
+  const explicit =
+    process.env[`KAFKA_CONSUMER_CLIENT_ID_${service.toUpperCase().replace(/-/g, '_')}`]?.trim();
+  if (explicit) {
+    return explicit;
+  }
+
+  const base = `${service}-consumer`;
+  const suffix =
+    process.env.KAFKA_CONSUMER_CLIENT_ID_SUFFIX?.trim() ??
+    process.env.HOSTNAME?.trim();
+  return suffix ? `${base}-${suffix}` : base;
 }
 
 function resolveConsumerSessionTimeoutMs(): number {

@@ -20,7 +20,6 @@
  */
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ClientKafka } from '@nestjs/microservices';
-import { firstValueFrom } from 'rxjs';
 import {
   type EventEnvelope,
   type EventFailurePayload,
@@ -28,6 +27,7 @@ import {
   type EventTypeValue,
   type KafkaEventTransport,
   type PublishOptions,
+  emitKafkaEvent,
   envelopeToKafkaHeaders,
   publishWithProducerRetry,
   resolveKafkaTopic,
@@ -82,13 +82,11 @@ export class EventPublisher implements OnModuleInit, KafkaEventTransport {
     try {
       await publishWithProducerRetry(
         () =>
-          firstValueFrom(
-            this.kafkaClient.emit(kafkaTopic, {
-              key: partitionKey,
-              value: envelope,
-              headers,
-            }),
-          ),
+          emitKafkaEvent(this.kafkaClient, kafkaTopic, {
+            key: partitionKey,
+            value: envelope,
+            headers,
+          }),
         {
           onRetry: (attempt, delayMs, error) => {
             this.logger.warn(
@@ -102,9 +100,12 @@ export class EventPublisher implements OnModuleInit, KafkaEventTransport {
         `Kafka publish succeeded: topic=${kafkaTopic} key=${partitionKey} eventId=${envelope.eventId}`,
       );
     } catch (error) {
+      const detail =
+        error instanceof Error
+          ? `${error.message}${error.stack ? `\n${error.stack}` : ''}`
+          : String(error);
       this.logger.error(
-        `Kafka publish failed after retries: topic=${kafkaTopic} eventId=${envelope.eventId}`,
-        error instanceof Error ? error.stack : String(error),
+        `Kafka publish failed after retries: topic=${kafkaTopic} eventId=${envelope.eventId} — ${detail}`,
       );
       throw error;
     }
@@ -129,13 +130,11 @@ export class EventPublisher implements OnModuleInit, KafkaEventTransport {
     };
 
     await publishWithProducerRetry(() =>
-      firstValueFrom(
-        this.kafkaClient.emit(dlqTopic, {
-          key: partitionKey,
-          value: envelope,
-          headers,
-        }),
-      ),
+      emitKafkaEvent(this.kafkaClient, dlqTopic, {
+        key: partitionKey,
+        value: envelope,
+        headers,
+      }),
     );
   }
 }
